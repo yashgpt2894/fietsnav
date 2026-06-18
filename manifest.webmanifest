@@ -1,0 +1,36 @@
+{
+  "id": "/fietsnav/",
+  "name": "FietsNav — bike navigation",
+  "short_name": "FietsNav",
+  "description": "Personal bike navigation along real cycle paths, ferries and the Dutch node network.",
+  "lang": "en",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "fullscreen", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0b1014",
+  "theme_color": "#0e7c5a",
+  "categories": ["navigation", "travel", "maps"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Navigate home",
+      "short_name": "Home",
+      "url": "./index.html?go=home",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Navigate to work",
+      "short_name": "Work",
+      "url": "./index.html?go=work",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

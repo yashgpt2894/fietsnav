@@ -1,0 +1,15 @@
+{
+  "appId": "nl.fietsnav.app",
+  "appName": "FietsNav",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#0b1014"
+  },
+  "android": {
+    "backgroundColor": "#0b1014"
+  }
+}

@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# generated build output (recreate with `npm run native:prep`)
+www/
+
+# Capacitor native projects (recreate with `npm run cap:add`)
+ios/
+android/
+.capacitor/
+
+# OS / editor cruft
+.DS_Store
+*.log
+.vscode/
+.idea/

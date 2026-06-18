@@ -1,0 +1,20 @@
+{
+  "name": "fietsnav",
+  "version": "2.0.0",
+  "description": "Personal bike navigation along real cycle paths, ferries and the Dutch node network (knooppunten).",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "npx --yes http-server -p 8000 -c-1 .",
+    "test": "node test/smoke.test.js",
+    "check": "node --check app.js && node --check sw.js && node test/smoke.test.js",
+    "native:prep": "mkdir -p www && cp index.html app.js sw.js manifest.webmanifest icon-192.png icon-512.png www/",
+    "cap:install": "npm i @capacitor/core @capacitor/cli @capacitor/ios @capacitor/android",
+    "cap:add": "npx cap add ios && npx cap add android",
+    "cap:sync": "npm run native:prep && npx cap sync",
+    "ios": "npx cap run ios",
+    "android": "npx cap run android"
+  },
+  "keywords": ["bike", "cycling", "navigation", "netherlands", "brouter", "pwa", "leaflet", "capacitor"],
+  "license": "MIT"
+}
