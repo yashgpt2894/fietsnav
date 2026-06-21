@@ -1014,10 +1014,11 @@ function renderSummary(){
       </div>
       ${elevCard(r)}
       ${compareCard(r)}
-      <button class="gmaps osmand" id="osmandBtn">
+      <a class="gmaps osmand" id="osmandBtn" href="${esc(osmandMapUrl()||'#')}" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M16 8l-2.5 6.5L8 16l2.5-6.5z" fill="currentColor" stroke="none"/></svg>
-        Navigate in OsmAnd <span class="gm-note">· follows this exact route</span>
-      </button>
+        Navigate in OsmAnd <span class="gm-note">· bike route</span>
+      </a>
+      <a class="osmand-get-link" id="osmandGet" href="#" target="_blank" rel="noopener noreferrer">Don’t have OsmAnd? Install it free →</a>
     </div>
     <div class="turns">
       <div class="hd" id="turnsHd" role="button" tabindex="0" aria-expanded="true"><span>Directions · ${r.turns.length} steps</span><span id="turnsCaret">▾</span></div>
@@ -1028,7 +1029,8 @@ function renderSummary(){
   $('#goBtn').addEventListener('click', startNav);
   $('#saveRouteBtn').addEventListener('click', saveCurrentRoute);
   $('#gpxBtn').addEventListener('click', exportGPX);
-  const os=$('#osmandBtn'); if(os) os.addEventListener('click', openOsmandSheet);
+  const os=$('#osmandBtn'); if(os) os.addEventListener('click', ()=>haptic(10));   // href opens OsmAnd
+  const og=$('#osmandGet'); if(og){ og.href = osmandStoreUrl(); og.addEventListener('click', ()=>haptic(10)); }
   const ct=$('#cmpToggle'); if(ct) ct.addEventListener('click', ()=>setRoadCompare(!state.showRoadRoute));
   $$('.altbtn').forEach(b=>b.addEventListener('click', ()=>{ state.activeAlt=parseInt(b.dataset.alt); state.route=state.routes[state.activeAlt]; drawRoutes(); renderSummary(); }));
   let open=true; $('#turnsHd').addEventListener('click', ()=>{ open=!open; $('#turnList').style.display=open?'block':'none'; $('#turnsCaret').textContent=open?'▾':'▸'; $('#turnsHd').setAttribute('aria-expanded', open?'true':'false'); });
@@ -1070,29 +1072,24 @@ function exportGPX(){
   try{ downloadFile(g.gpx, 'application/gpx+xml', g.filename); toast('GPX exported ⬇'); haptic(20); }
   catch(e){ toast('Could not export GPX'); }
 }
-/* Hand the exact route to OsmAnd: prefer the native share sheet with the .gpx file (best on iOS,
-   one tap to "Copy to OsmAnd"); otherwise download the file and tell the user how to import it.
-   OsmAnd's "Navigate by Track" then follows OUR polyline verbatim with voice. */
-async function openInOsmAnd(){
-  const g = buildGPX(); if(!g) return;
-  haptic(10);
-  try{
-    if(navigator.canShare && typeof File!=='undefined'){
-      const file = new File([g.gpx], g.filename, {type:'application/gpx+xml'});
-      if(navigator.canShare({files:[file]})){
-        await navigator.share({files:[file], title:g.name, text:'Open in OsmAnd → Navigate by Track'});
-        toast('In OsmAnd: ⋮ → Navigate by Track');
-        return;
-      }
-    }
-  }catch(e){ if(e && e.name==='AbortError') return; /* fall through to download */ }
-  try{
-    downloadFile(g.gpx, 'application/gpx+xml', g.filename);
-    toast('Saved .gpx — open it in OsmAnd → Plan a route → Navigate by Track');
-  }catch(e){ toast('Could not create the GPX file'); }
+/* One-tap hand-off: an OsmAnd Universal/App link that opens OsmAnd straight to our route on the
+   bike profile (you tap Go). OsmAnd re-routes between waypoints, so we down-sample the polyline to
+   ~28 turn-significant points (Ramer–Douglas–Peucker) — enough to hug our route closely without an
+   over-long URL. If OsmAnd isn't installed the link gracefully opens osmand.net (which offers it). */
+const OSMAND_MAX_VIA = 28;
+function osmandMapUrl(){
+  const r = state.route; if(!state.from || !state.to || !r || !r.coords || r.coords.length<2) return null;
+  const f = (lat,lon)=>`${(+lat).toFixed(5)},${(+lon).toFixed(5)}`;
+  const c = r.coords;
+  let eps=25, keep=rdpKeep(c, eps);
+  while(keep.length > OSMAND_MAX_VIA+2 && eps<6000){ eps*=1.4; keep=rdpKeep(c, eps); }
+  let via = keep.filter(i=>i>0 && i<c.length-1).map(i=>c[i]);
+  if(via.length > OSMAND_MAX_VIA){ const out=[], step=via.length/OSMAND_MAX_VIA; for(let k=0;k<OSMAND_MAX_VIA;k++) out.push(via[Math.round(k*step)]); via=out; }
+  let u = `https://osmand.net/map?start=${f(state.from.lat,state.from.lon)}&end=${f(state.to.lat,state.to.lon)}&profile=bicycle`;
+  if(via.length) u += `&via=${encodeURIComponent(via.map(p=>f(p[0],p[1])).join(';'))}`;
+  return u;
 }
-/* the right store for "Install OsmAnd" on this device (we can't detect if it's already installed,
-   so we offer install explicitly rather than guess) */
+/* the right store for "Install OsmAnd" on this device (we can't detect if it's already installed) */
 const isIOSDevice = () => { try{ return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1); }catch(e){ return false; } };
 const isAndroidDevice = () => { try{ return /android/i.test(navigator.userAgent); }catch(e){ return false; } };
 function osmandStoreUrl(){
@@ -1100,12 +1097,6 @@ function osmandStoreUrl(){
   if(isAndroidDevice()) return 'https://play.google.com/store/apps/details?id=net.osmand.plus';
   return 'https://osmand.net/';   // desktop → OsmAnd site (links to both stores)
 }
-function openOsmandSheet(){
-  haptic(10);
-  const get = $('#osmandGet'); if(get) get.href = osmandStoreUrl();
-  const s = $('#osmandSheet'); if(s && s.classList) s.classList.add('on');
-}
-function closeOsmandSheet(){ const s=$('#osmandSheet'); if(s && s.classList) s.classList.remove('on'); }
 
 /* =========================================================
    NAVIGATION (GPS follow + voice + reroute)
@@ -1736,12 +1727,6 @@ function closeDrawer(){ drawer.classList.remove('on'); }
 $('#menuBtn').addEventListener('click', openDrawer);
 $('#drawClose').addEventListener('click', closeDrawer);
 drawer.addEventListener('click', e=>{ if(e.target===drawer) closeDrawer(); });
-
-/* OsmAnd hand-off sheet */
-$('#osmandSend').addEventListener('click', ()=>{ closeOsmandSheet(); openInOsmAnd(); });
-$('#osmandClose').addEventListener('click', closeOsmandSheet);
-$('#osmandGet').addEventListener('click', ()=>{ haptic(10); setTimeout(closeOsmandSheet, 100); });   // link opens the store, then dismiss
-$('#osmandSheet').addEventListener('click', e=>{ if(e.target.id==='osmandSheet') closeOsmandSheet(); });
 
 function syncDrawerSettings(){
   $$('#themeSeg button').forEach(b=>b.dataset.on = b.dataset.themePref===(store.settings.theme||'auto')?'1':'0');
