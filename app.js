@@ -1018,10 +1018,6 @@ function renderSummary(){
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M16 8l-2.5 6.5L8 16l2.5-6.5z" fill="currentColor" stroke="none"/></svg>
         Navigate in OsmAnd <span class="gm-note">· follows this exact route</span>
       </button>
-      <a class="gmaps" id="gmapsBtn" href="${esc(googleMapsUrl()||'#')}" target="_blank" rel="noopener noreferrer">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>
-        Open in Google Maps <span class="gm-note">· approximate</span>
-      </a>
     </div>
     <div class="turns">
       <div class="hd" id="turnsHd" role="button" tabindex="0" aria-expanded="true"><span>Directions · ${r.turns.length} steps</span><span id="turnsCaret">▾</span></div>
@@ -1032,8 +1028,7 @@ function renderSummary(){
   $('#goBtn').addEventListener('click', startNav);
   $('#saveRouteBtn').addEventListener('click', saveCurrentRoute);
   $('#gpxBtn').addEventListener('click', exportGPX);
-  const os=$('#osmandBtn'); if(os) os.addEventListener('click', openInOsmAnd);
-  const gm=$('#gmapsBtn'); if(gm) gm.addEventListener('click', ()=>haptic(10));   // href does the navigation; just a tap buzz
+  const os=$('#osmandBtn'); if(os) os.addEventListener('click', openOsmandSheet);
   const ct=$('#cmpToggle'); if(ct) ct.addEventListener('click', ()=>setRoadCompare(!state.showRoadRoute));
   $$('.altbtn').forEach(b=>b.addEventListener('click', ()=>{ state.activeAlt=parseInt(b.dataset.alt); state.route=state.routes[state.activeAlt]; drawRoutes(); renderSummary(); }));
   let open=true; $('#turnsHd').addEventListener('click', ()=>{ open=!open; $('#turnList').style.display=open?'block':'none'; $('#turnsCaret').textContent=open?'▾':'▸'; $('#turnsHd').setAttribute('aria-expanded', open?'true':'false'); });
@@ -1046,56 +1041,6 @@ function renderTurnList(r){
     return `<div class="turn"><div class="arr ${cls}">${ARROWS[t.type]||'⬆'}</div>
       <div class="tx"><b>${esc(turnText(t))}</b>${d}</div></div>`;
   }).join('');
-}
-
-/* ---- open the same trip in Google Maps (bicycling) ----
-   In-app turn-by-turn will never match Google's; this hands the exact start/stops/
-   destination to Google Maps cycling directions so you can use it when you prefer. */
-/* choose up to maxN waypoints to pin Google to our route: the route's significant turns
-   (Ramer–Douglas–Peucker) plus evenly-spaced fillers to cover the long gaps, then trimmed to
-   maxN in route order. maxN is kept tiny (≤3) for the Google Maps app — see googleMapsUrl(). */
-function shapeWaypoints(coords, maxN){
-  const n=coords.length; if(n<=2) return [];
-  let eps=120, keep=rdpKeep(coords, eps);
-  while(keep.length>maxN+1 && eps<4000){ eps*=1.5; keep=rdpKeep(coords, eps); }
-  const idx=new Set(keep.slice(1,-1));                   // turn indices (drop endpoints)
-  for(let k=1;k<=maxN && idx.size<maxN;k++) idx.add(Math.round(n*k/(maxN+1)));  // fillers for the gaps
-  let arr=[...idx].filter(i=>i>0 && i<n-1).sort((a,b)=>a-b);
-  if(arr.length>maxN){ const out=[],step=arr.length/maxN; for(let k=0;k<maxN;k++) out.push(arr[Math.round(k*step)]); arr=out; }
-  return arr.map(i=>coords[i]);
-}
-// The Google Maps app accepts at most 3 intermediate waypoints in a dir/?api=1 link (the "9"
-// limit is desktop-only); handing it more makes the mobile app reject/crash on the link. And
-// Maps re-snaps each waypoint to roads and recomputes the leg between them anyway — so a few
-// well-spaced points trace OUR path better than many clustered ones. So: keep the user's real
-// stops if any (capped at 3); otherwise nudge fidelity with up to 3 well-spaced shape points.
-const GMAPS_MAX_WP = 3;
-const GMAPS_MIN_GAP = 200;   // m — drop shape points clustered closer than this (Maps re-routes
-                             // between waypoints anyway; clustered points only add snap ambiguity)
-// up to GMAPS_MAX_WP shape points, each ≥GMAPS_MIN_GAP from the endpoints and each other; may be empty
-function spacedShapeWaypoints(coords){
-  const cand = shapeWaypoints(coords, GMAPS_MAX_WP + 2);   // over-pick, then space-filter down
-  const ends = [coords[0], coords[coords.length-1]];
-  const kept = [];
-  for(const p of cand){
-    if(kept.length >= GMAPS_MAX_WP) break;
-    if([...ends, ...kept].every(q => haversine(p, q) >= GMAPS_MIN_GAP)) kept.push(p);
-  }
-  return kept;
-}
-function googleMapsUrl(){
-  if(!state.from || !state.to) return null;
-  const f = (lat,lon) => `${(+lat).toFixed(5)},${(+lon).toFixed(5)}`;
-  let u = `https://www.google.com/maps/dir/?api=1&origin=${f(state.from.lat,state.from.lon)}&destination=${f(state.to.lat,state.to.lon)}&travelmode=bicycling`;
-  const vias = state.vias.filter(Boolean).map(v=>[v.lat,v.lon]);
-  const r = state.route;
-  let pts;
-  if(vias.length) pts = vias.slice(0, GMAPS_MAX_WP);                          // real stops matter most
-  else if(r && r.coords && r.coords.length>2) pts = spacedShapeWaypoints(r.coords);  // else a few well-spaced hints
-  else pts = [];
-  const wps = pts.map(p=>f(p[0],p[1]));
-  if(wps.length) u += `&waypoints=${encodeURIComponent(wps.join('|'))}`;      // omit entirely when none survive
-  return u;
 }
 
 /* ---- GPX (export + hand off to OsmAnd, which follows the EXACT track) ---- */
@@ -1146,6 +1091,21 @@ async function openInOsmAnd(){
     toast('Saved .gpx — open it in OsmAnd → Plan a route → Navigate by Track');
   }catch(e){ toast('Could not create the GPX file'); }
 }
+/* the right store for "Install OsmAnd" on this device (we can't detect if it's already installed,
+   so we offer install explicitly rather than guess) */
+const isIOSDevice = () => { try{ return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1); }catch(e){ return false; } };
+const isAndroidDevice = () => { try{ return /android/i.test(navigator.userAgent); }catch(e){ return false; } };
+function osmandStoreUrl(){
+  if(isIOSDevice()) return 'https://apps.apple.com/app/osmand-maps-travel-navigate/id934850257';
+  if(isAndroidDevice()) return 'https://play.google.com/store/apps/details?id=net.osmand.plus';
+  return 'https://osmand.net/';   // desktop → OsmAnd site (links to both stores)
+}
+function openOsmandSheet(){
+  haptic(10);
+  const get = $('#osmandGet'); if(get) get.href = osmandStoreUrl();
+  const s = $('#osmandSheet'); if(s && s.classList) s.classList.add('on');
+}
+function closeOsmandSheet(){ const s=$('#osmandSheet'); if(s && s.classList) s.classList.remove('on'); }
 
 /* =========================================================
    NAVIGATION (GPS follow + voice + reroute)
@@ -1776,6 +1736,12 @@ function closeDrawer(){ drawer.classList.remove('on'); }
 $('#menuBtn').addEventListener('click', openDrawer);
 $('#drawClose').addEventListener('click', closeDrawer);
 drawer.addEventListener('click', e=>{ if(e.target===drawer) closeDrawer(); });
+
+/* OsmAnd hand-off sheet */
+$('#osmandSend').addEventListener('click', ()=>{ closeOsmandSheet(); openInOsmAnd(); });
+$('#osmandClose').addEventListener('click', closeOsmandSheet);
+$('#osmandGet').addEventListener('click', ()=>{ haptic(10); setTimeout(closeOsmandSheet, 100); });   // link opens the store, then dismiss
+$('#osmandSheet').addEventListener('click', e=>{ if(e.target.id==='osmandSheet') closeOsmandSheet(); });
 
 function syncDrawerSettings(){
   $$('#themeSeg button').forEach(b=>b.dataset.on = b.dataset.themePref===(store.settings.theme||'auto')?'1':'0');

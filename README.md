@@ -18,8 +18,9 @@ It does what `routeplanner.fietsersbond.nl` does, plus live turn-by-turn navigat
 - **Live navigation** — **course-up** (the map rotates so your direction of travel points up),
   **zoomed in**, with a **heading arrow**; tap the compass to switch to north-up; pinch-zoom *sticks*
   while you ride; spoken voice prompts, off-route rerouting, **screen stays awake**
-- **Open in Google Maps** — one tap hands the exact start / stops / destination to Google Maps
-  cycling directions, for when you want Google's live nav
+- **Navigate in OsmAnd** — hands the route to OsmAnd as a GPX track so its turn-by-turn voice nav
+  **follows our exact scenic route** (Google Maps deep-links can't — they cap at 3 waypoints and
+  recompute their own path); offers a one-tap install if you don't have OsmAnd yet
 - **Elevation & surface profile** under every route (how much climb, how much is paved)
 - **Distance comparison** vs. the *shortest* bike route (the more direct, Google-Maps-style ride)
 - **Search-as-you-type** (Photon), biased to the Netherlands, with **recent searches**

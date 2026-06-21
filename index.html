@@ -402,6 +402,32 @@
     background:var(--surface-2);display:grid;place-items:center;color:var(--muted)}
   .draw-in .closex:hover{color:var(--ink)}
 
+  /* OsmAnd hand-off sheet (centered card on desktop, bottom sheet on phones) */
+  #osmandSheet{position:absolute;inset:0;z-index:1300;display:none;background:rgba(8,14,18,.5);
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);align-items:center;justify-content:center;padding:18px}
+  #osmandSheet.on{display:flex;animation:fade .2s ease}
+  .osm-card{position:relative;background:var(--surface);color:var(--ink);border-radius:var(--r-lg);box-shadow:var(--shadow-3);
+    width:min(420px,100%);padding:24px 22px calc(20px + var(--safe-b));text-align:center;animation:sheetup .24s var(--ease)}
+  .osm-card .osm-ico{font-size:38px;line-height:1;margin-bottom:6px}
+  .osm-card h3{margin:0 0 6px;font-size:20px;font-weight:780;letter-spacing:-.3px}
+  .osm-card p{margin:0 0 18px;font-size:14.5px;color:var(--ink-2);line-height:1.5}
+  .osm-card p b{color:var(--accent-d)}
+  .osm-send{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--accent);color:var(--on-accent);
+    font-size:16px;font-weight:750;padding:15px;border-radius:14px;box-shadow:0 6px 18px rgba(14,124,90,.4);transition:transform .12s}
+  .osm-send:active{transform:scale(.98)}
+  .osm-steps{font-size:12.5px;color:var(--muted);margin:11px 2px 0;line-height:1.5}
+  .osm-steps b{color:var(--ink-2);font-weight:700}
+  .osm-get{display:block;margin-top:18px;padding-top:15px;border-top:1px solid var(--line);
+    font-size:14px;font-weight:700;color:var(--accent);text-decoration:none}
+  .osm-get:hover{text-decoration:underline}
+  .osm-card .closex{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:50%;background:var(--surface-2);
+    display:grid;place-items:center;color:var(--muted);font-size:16px}
+  .osm-card .closex:hover{color:var(--ink)}
+  @media (max-width:759px){
+    #osmandSheet{align-items:flex-end;padding:0}
+    .osm-card{width:100%;border-radius:var(--r-lg) var(--r-lg) 0 0;padding-bottom:calc(26px + var(--safe-b))}
+  }
+
   /* toast */
   #toast{position:absolute;left:50%;transform:translate(-50%,8px);bottom:calc(96px + var(--safe-b));z-index:1500;
     background:var(--ink);color:var(--surface);padding:12px 19px;border-radius:13px;font-size:13.5px;font-weight:600;
@@ -437,7 +463,7 @@
   .lp{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:10px;font-size:14px;font-weight:600;color:var(--ink)}
   .lp:hover{background:var(--surface-2)}
 
-  /* "Open in Google Maps" — full-width secondary action under the route summary */
+  /* full-width secondary action under the route summary (e.g. "Navigate in OsmAnd") */
   .gmaps{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;padding:12px;border-radius:13px;
     background:var(--surface-2);color:var(--ink-2);font-size:14px;font-weight:700;border:1.5px solid var(--line);
     text-decoration:none;transition:border-color .15s,background .15s,color .15s}
@@ -600,6 +626,19 @@
     <div class="toggle-row" id="awakeToggle"><span class="em">📱</span><span>Keep screen on while navigating</span><span class="sw"></span></div>
     <div class="draw-sec" style="margin-top:18px">About</div>
     <div class="draw-empty">Routing by BRouter · Search by Photon · POIs by Overpass · Map data © OpenStreetMap contributors. Built for personal use.</div>
+  </div>
+</div>
+
+<!-- OsmAnd hand-off sheet -->
+<div id="osmandSheet">
+  <div class="osm-card">
+    <button class="closex" id="osmandClose" aria-label="Close">✕</button>
+    <div class="osm-ico">🧭</div>
+    <h3>Navigate in OsmAnd</h3>
+    <p>OsmAnd follows <b>this exact scenic route</b> with turn-by-turn voice — free, works offline.</p>
+    <button class="osm-send" id="osmandSend">Send route to OsmAnd</button>
+    <div class="osm-steps">Then in OsmAnd: <b>import → Plan a route → Navigate by Track</b></div>
+    <a class="osm-get" id="osmandGet" target="_blank" rel="noopener noreferrer">Don’t have OsmAnd? Install it free →</a>
   </div>
 </div>
 
