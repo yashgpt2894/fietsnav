@@ -9,8 +9,17 @@ It does what `routeplanner.fietsersbond.nl` does, plus live turn-by-turn navigat
 
 ## What it does
 
-- **Bike-first routing** via BRouter, in four styles: **Recommended, Fast, Quiet, Shortest**
-- **Turn-by-turn navigation** — spoken voice prompts, off-route rerouting, **screen stays awake**
+- **Scenic-first routing** via BRouter — every route maximises **dedicated cycle paths and tracks
+  through parks, forest and along the water** (typically ~half or more on car-free cycleways), only
+  dropping onto quiet country roads where no path exists
+- **Park discovery** — BRouter is blind to urban parks (`leisure=park`), so the app also finds big
+  green areas near your route from OpenStreetMap and **dips the route through them** when the detour
+  is small. You get a **"Most scenic"** route (through the parks) plus the **"Direct"** scenic route
+- **Live navigation** — **course-up** (the map rotates so your direction of travel points up),
+  **zoomed in**, with a **heading arrow**; tap the compass to switch to north-up; pinch-zoom *sticks*
+  while you ride; spoken voice prompts, off-route rerouting, **screen stays awake**
+- **Open in Google Maps** — one tap hands the exact start / stops / destination to Google Maps
+  cycling directions, for when you want Google's live nav
 - **Elevation & surface profile** under every route (how much climb, how much is paved)
 - **Distance comparison** vs. the *shortest* bike route (the more direct, Google-Maps-style ride)
 - **Search-as-you-type** (Photon), biased to the Netherlands, with **recent searches**
@@ -91,7 +100,8 @@ npm run check    # syntax check + tests
 | File | Purpose |
 |------|---------|
 | `index.html` | App shell, design system (light + dark), layout |
-| `app.js` | Map, search, routing, navigation, elevation, POIs, saved places, theme, bottom sheet |
+| `app.js` | Map, search, routing, course-up navigation, elevation, POIs, saved places, theme, bottom sheet |
+| `scenic.brf` | BRouter routing profile — prefers cycle paths/tracks through parks, forest & water (uploaded to BRouter on first use, then cached) |
 | `manifest.webmanifest` | Makes it installable (name, icons, shortcuts, colours) |
 | `sw.js` | Service worker — offline app shell + capped map-tile cache |
 | `capacitor.config.json` · `NATIVE.md` | Native (iOS/Android) build config + instructions |
@@ -100,7 +110,7 @@ npm run check    # syntax check + tests
 
 ## Credits & data
 
-Routing & shortest-route comparison **BRouter** · Search **Photon (Komoot)** ·
-Points **Overpass API** · Maps **CyclOSM / CARTO / waymarkedtrails** ·
+Routing & scenic/shortest profiles **BRouter** · Search **Photon (Komoot)** ·
+Points **Overpass API** · Maps **CyclOSM / CARTO / waymarkedtrails** · Map rotation **leaflet-rotate** ·
 Map data **© OpenStreetMap contributors**. All free, public services — please use gently.
 Built for personal use.

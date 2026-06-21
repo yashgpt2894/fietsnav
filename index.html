@@ -43,9 +43,9 @@
   :root{
     /* brand + route palette */
     --accent:#0e7c5a; --accent-d:#0a5e44; --accent-l:#e6f4ee; --on-accent:#ffffff;
-    --fast:#e8590c; --quiet:#1971c2; --short:#7048e8; --danger:#e03131;
+    --fast:#e8590c; --quiet:#1971c2; --short:#7048e8; --scenic:#2f9e44; --smart:#4263eb; --danger:#e03131;
     /* darker variants for active-chip text so it meets contrast on the light tint */
-    --fast-chip:#9c3d00; --quiet-chip:#15538f; --short-chip:#5b3bc4;
+    --fast-chip:#9c3d00; --quiet-chip:#15538f; --short-chip:#5b3bc4; --scenic-chip:#1b6e34; --smart-chip:#2f49bf;
     /* surfaces & ink (light) */
     --bg:#eef1f4; --surface:#ffffff; --surface-2:#f4f6f8; --surface-3:#eef1f4;
     --glass:rgba(255,255,255,.78); --glass-brd:rgba(255,255,255,.6);
@@ -62,8 +62,8 @@
   }
   [data-theme="dark"]{
     --accent:#1fb086; --accent-d:#34d3a3; --accent-l:#10362c; --on-accent:#06231a;
-    --fast:#ff8a4d; --quiet:#5aa9f0; --short:#a98bff; --danger:#ff6b6b;
-    --fast-chip:#ff8a4d; --quiet-chip:#5aa9f0; --short-chip:#a98bff;  /* bright text reads fine on dark tint */
+    --fast:#ff8a4d; --quiet:#5aa9f0; --short:#a98bff; --scenic:#51cf66; --smart:#748ffc; --danger:#ff6b6b;
+    --fast-chip:#ff8a4d; --quiet-chip:#5aa9f0; --short-chip:#a98bff; --scenic-chip:#51cf66; --smart-chip:#748ffc;  /* bright text reads fine on dark tint */
     --bg:#0b1014; --surface:#161b21; --surface-2:#1e252d; --surface-3:#262f39;
     --glass:rgba(20,26,32,.74); --glass-brd:rgba(255,255,255,.08);
     --ink:#eaf0f4; --ink-2:#c2ccd4; --muted:#8b97a3; --line:#2a333d;
@@ -177,6 +177,8 @@
   .chip.fast[data-on="1"]{background:color-mix(in srgb,var(--fast) 14%,transparent);color:var(--fast-chip);border-color:var(--fast)}
   .chip.quiet[data-on="1"]{background:color-mix(in srgb,var(--quiet) 14%,transparent);color:var(--quiet-chip);border-color:var(--quiet)}
   .chip.short[data-on="1"]{background:color-mix(in srgb,var(--short) 14%,transparent);color:var(--short-chip);border-color:var(--short)}
+  .chip.scenic[data-on="1"]{background:color-mix(in srgb,var(--scenic) 16%,transparent);color:var(--scenic-chip);border-color:var(--scenic)}
+  .chip.smart[data-on="1"]{background:color-mix(in srgb,var(--smart) 14%,transparent);color:var(--smart-chip);border-color:var(--smart)}
 
   /* ---------------------------- BOTTOM SHEET / RESULTS -------------------- */
   #sheet{background:var(--surface);color:var(--ink)}
@@ -371,19 +373,37 @@
 
   /* map markers */
   .markpin{filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
-  .userdot{width:20px;height:20px;background:var(--quiet);border:3px solid #fff;border-radius:50%;
-    box-shadow:0 0 0 2px rgba(25,113,194,.3),0 2px 6px rgba(0,0,0,.3)}
-  .userdot.heading{position:relative}
-  .userdot .beam{position:absolute;left:50%;top:50%;width:0;height:0;transform:translate(-50%,-100%);
-    border-left:13px solid transparent;border-right:13px solid transparent;border-bottom:22px solid rgba(25,113,194,.35)}
+  /* user location: a plain dot when planning, a directional arrow puck while navigating */
+  .userwrap{position:relative;width:42px;height:42px}
+  .userdot{position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;background:var(--quiet);
+    border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px rgba(25,113,194,.3),0 2px 6px rgba(0,0,0,.3)}
+  .navarrow{position:absolute;left:50%;top:50%;width:38px;height:38px;margin:-19px 0 0 -19px;display:none;
+    place-items:center;transform-origin:50% 50%;transition:transform .3s var(--ease)}
+  .navarrow svg{filter:drop-shadow(0 2px 4px rgba(0,0,0,.45))}
+  .userwrap.nav .userdot{display:none}
+  .userwrap.nav .navarrow{display:grid}
   .poi-emoji{font-size:19px;text-align:center;line-height:27px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}
   .nodemk{background:var(--quiet);color:#fff;border:2px solid #fff;border-radius:50%;width:28px;height:28px;line-height:24px;
     text-align:center;font-size:11px;font-weight:750;box-shadow:0 2px 6px rgba(0,0,0,.45)}
-  .clickpop .leaflet-popup-content-wrapper{border-radius:14px;box-shadow:var(--shadow-3);background:var(--surface);color:var(--ink)}
+  .clickpop .leaflet-popup-content-wrapper{border-radius:16px;box-shadow:var(--shadow-3);background:var(--surface);color:var(--ink)}
   .clickpop .leaflet-popup-content{margin:8px}
   .clickpop .leaflet-popup-tip{background:var(--surface)}
+  /* close (✕) on the map-tap popup — comfortable tap target, so a mis-tap is easy to dismiss */
+  .clickpop a.leaflet-popup-close-button{width:30px;height:30px;font-size:22px;line-height:30px;color:var(--muted);
+    border-radius:50%;top:7px;right:7px;transition:background .15s,color .15s}
+  .clickpop a.leaflet-popup-close-button:hover{background:var(--surface-2);color:var(--ink)}
+  .lp-title{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:750;
+    padding:4px 30px 8px 8px;line-height:1.3}
   .lp{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:10px;font-size:14px;font-weight:600;color:var(--ink)}
   .lp:hover{background:var(--surface-2)}
+
+  /* "Open in Google Maps" — full-width secondary action under the route summary */
+  .gmaps{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;padding:12px;border-radius:13px;
+    background:var(--surface-2);color:var(--ink-2);font-size:14px;font-weight:700;border:1.5px solid var(--line);
+    text-decoration:none;transition:border-color .15s,background .15s,color .15s}
+  .gmaps:hover{border-color:var(--quiet);color:var(--quiet)}
+  .gmaps:active{transform:scale(.99)}
+  .gmaps svg{width:18px;height:18px;flex:none}
   .leaflet-popup-content-wrapper{background:var(--surface);color:var(--ink);border-radius:12px}
   .leaflet-popup-tip{background:var(--surface)}
 
@@ -404,7 +424,7 @@
       </div>
       <div class="ttl">
         <h1>FietsNav</h1>
-        <div class="sub">Bike routing along real cycle paths</div>
+        <div class="sub">The most scenic bike routes</div>
       </div>
       <div class="grow"></div>
       <button class="iconbtn" id="themeBtn" title="Theme" aria-label="Toggle theme">
@@ -435,13 +455,6 @@
       <div id="viaWrap"></div>
       <button class="addvia" id="addViaBtn">＋ Add stop</button>
     </div>
-
-    <div class="styles hidden" id="styles">
-      <button class="chip rec" data-profile="trekking" data-on="1"><span class="em">🚲</span>Recommended</button>
-      <button class="chip fast" data-profile="fastbike"><span class="em">⚡</span>Fast</button>
-      <button class="chip quiet" data-profile="safety"><span class="em">🌳</span>Quiet</button>
-      <button class="chip short" data-profile="shortest"><span class="em">📏</span>Shortest</button>
-    </div>
   </div>
 
   <div id="sheet">
@@ -452,6 +465,9 @@
 
 <!-- floating controls -->
 <div id="fabs">
+  <button class="fab hide" id="orientBtn" title="Map orientation (course-up / north-up)" aria-label="Toggle map orientation">
+    <svg id="orientIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l4 9-4-2-4 2 4-9z" fill="currentColor" stroke="none"/><path d="M8 21l4-9 4 9-4-2-4 2z" opacity=".4"/></svg>
+  </button>
   <button class="fab hide" id="recenterBtn" title="Re-center" aria-label="Re-center on my location">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="4"/></svg>
   </button>
@@ -533,6 +549,8 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- map rotation for course-up navigation (optional: app degrades to north-up if it fails to load) -->
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

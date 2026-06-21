@@ -46,12 +46,13 @@ const saveStore = () => { try{ localStorage.setItem(STORE_KEY, JSON.stringify(st
 /* ---------- app state ---------- */
 const state = {
   from:null, to:null, vias:[],          // each {lat,lon,label}
-  profile:'trekking',
+  profile:'scenic',                      // scenic-only app: always route through parks/water
   routes:[], activeAlt:0,                 // parsed route objects
   route:null,
   nav:false, watchId:null, lastSnapIdx:0, offCount:0, rerouting:false,
   userPos:null, userMarker:null, userAcc:null, heading:null,
   announced:{}, follow:true, programmaticMove:false,
+  navZoom:17, navZoomed:false, courseUp:true,   // navigation view: zoomed-in + course-up (rotating map)
   pois:{ nodes:false, parking:false, ferry:false, station:false },
   overlays:{ cycleroutes:false },
   compare:null, showRoadRoute:false,
@@ -60,9 +61,17 @@ const state = {
 /* =========================================================
    MAP
    ========================================================= */
-const map = L.map('map', { zoomControl:false, attributionControl:true, preferCanvas:false }).setView(NL_CENTER, 8);
+const map = L.map('map', {
+  zoomControl:false, attributionControl:true, preferCanvas:false,
+  rotate:true, touchRotate:false, shiftKeyRotate:false, rotateControl:false, bearing:0   // leaflet-rotate (ignored if plugin absent)
+}).setView(NL_CENTER, 8);
 L.control.zoom({ position:'bottomleft' }).addTo(map);
 map.attributionControl.setPrefix('');
+/* map rotation is available only if the leaflet-rotate plugin loaded; otherwise we
+   navigate north-up with a rotating heading arrow (graceful degradation). */
+const ROTATE = typeof map.setBearing === 'function';
+let mapBearing = 0;                       // current course-up rotation we've applied (degrees)
+const courseUpActive = () => ROTATE && state.nav && state.courseUp;
 
 const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 const tileOpts = { maxZoom:20, updateWhenIdle:false, keepBuffer:3 };
@@ -91,6 +100,8 @@ const poiLayer = L.layerGroup().addTo(map);
 
 /* track user vs programmatic map moves (for the re-center button in nav) */
 map.on('dragstart', ()=>{ if(state.nav){ state.follow=false; showRecenter(true); } });
+/* remember the user's own pinch-zoom during nav so it sticks as they keep moving */
+map.on('zoomend', ()=>{ if(state.nav && !state.programmaticMove){ state.navZoom = map.getZoom(); state.navZoomed = true; } });
 
 /* =========================================================
    GEOCODING (Photon) + autocomplete
@@ -278,11 +289,12 @@ function renderViaFields(){
 map.on('click', async (e)=>{
   if(state.nav) return;
   const {lat, lng} = e.latlng;
-  const html = `<div style="font-size:13px;min-width:150px">
+  const html = `<div style="font-size:13px;min-width:158px">
+    <div class="lp-title">Drop a point here</div>
     <button class="lp" data-r="from">🟢 Set as start</button>
     <button class="lp" data-r="to">🔴 Set as destination</button>
     <button class="lp" data-r="via">🔵 Add as stop</button></div>`;
-  const pop = L.popup({closeButton:false, className:'clickpop'}).setLatLng(e.latlng).setContent(html).openOn(map);
+  const pop = L.popup({closeButton:true, autoClose:true, closeOnClick:true, className:'clickpop'}).setLatLng(e.latlng).setContent(html).openOn(map);
   setTimeout(()=>{
     $$('.lp').forEach(b=> b.addEventListener('click', async ()=>{
       map.closePopup(pop);
@@ -317,9 +329,42 @@ function lonlatString(){
   return pts.map(p=>`${p.lon.toFixed(6)},${p.lat.toFixed(6)}`).join('|');
 }
 
-async function brouterRoute(profile, altIdx, signal){
-  const url = `${BROUTER}?lonlats=${lonlatString()}&profile=${encodeURIComponent(profile)}&alternativeidx=${altIdx}&format=geojson`;
-  const r = await fetch(url, signal?{signal}:undefined);
+/* Custom BRouter profiles we ship as .brf files, upload on first use, then cache the id:
+   - scenic  → maximal greenery (forests/parks + rivers/lakes, bypass big towns, low-noise)
+   - hybrid  → "Smart": a lighter green lean (forests/parks + water) WITHOUT the town-bypass
+               that costs the most distance — so it's mostly scenic yet noticeably more
+               efficient than full Scenic. BRouter does the balancing.
+   The id is cached; if BRouter ever forgets it we re-upload. Falls back to a built-in profile. */
+const CUSTOM_PROFILES = { scenic:'scenic.brf', hybrid:'smart.brf' };
+const CUSTOM_FALLBACK = { scenic:'safety', hybrid:'trekking' };
+const customProfileId = {}, customProfilePromise = {};
+try{ Object.assign(customProfileId, JSON.parse(localStorage.getItem('fietsnav.customProfiles.v2')||'{}')||{}); }catch(e){}
+const saveCustomProfiles = () => { try{ localStorage.setItem('fietsnav.customProfiles.v2', JSON.stringify(customProfileId)); }catch(e){} };
+async function uploadCustomProfile(name){
+  const txt = await (await fetch(CUSTOM_PROFILES[name])).text();
+  const r = await fetch(`${BROUTER}/profile`, { method:'POST', body:txt });
+  const j = await r.json();
+  if(!j || !j.profileid) throw new Error(name+' profile upload failed');
+  customProfileId[name] = j.profileid; saveCustomProfiles();
+  return j.profileid;
+}
+function ensureCustomProfile(name){
+  if(customProfileId[name]) return Promise.resolve(customProfileId[name]);
+  if(!customProfilePromise[name]) customProfilePromise[name] = uploadCustomProfile(name).finally(()=>{ customProfilePromise[name]=null; });
+  return customProfilePromise[name];
+}
+
+async function brouterRoute(profile, altIdx, signal, lonlats){
+  lonlats = lonlats || lonlatString();
+  let p = profile, custom = Object.prototype.hasOwnProperty.call(CUSTOM_PROFILES, profile);
+  if(custom){ try{ p = await ensureCustomProfile(profile); }catch(e){ p = CUSTOM_FALLBACK[profile]; custom=false; } }
+  const build = pr => `${BROUTER}?lonlats=${lonlats}&profile=${encodeURIComponent(pr)}&alternativeidx=${altIdx}&format=geojson`;
+  let r = await fetch(build(p), signal?{signal}:undefined);
+  if(custom && r.status>=500){
+    // BRouter may have evicted our custom profile — re-upload once and retry
+    delete customProfileId[profile]; saveCustomProfiles();
+    try{ p = await ensureCustomProfile(profile); r = await fetch(build(p), signal?{signal}:undefined); }catch(e){}
+  }
   if(!r.ok){ const t = await r.text().catch(()=> ''); throw new Error(t || ('routing failed ('+r.status+')')); }
   return r.json();
 }
@@ -336,6 +381,105 @@ async function shortestBikeRoute(sig){
   const dist = parseFloat(p['track-length']) || pathLength(coords);
   const time = parseFloat(p['total-time']) || (dist/4.4);
   return { dist, time, coords };
+}
+
+/* =========================================================
+   PARK DISCOVERY
+   BRouter optimises for forest/water but is blind to urban parks (leisure=park).
+   So we find big green areas near the route via OpenStreetMap (Overpass) and dip the
+   route into their edges — extra greenery for minimal detour ("optimise only when needed").
+   ========================================================= */
+const PARK_MIN_AREA = 120000;   // ~12 ha: only sizeable parks justify a detour
+const PARK_NEAR = 600;          // m: the park must hug the route corridor
+const PARK_MAX_DETOUR = 1.20;   // never let the park route exceed base distance × this
+                                // (this also rejects "backward" parks behind the start — a dip that
+                                //  needs a long loop, e.g. around a lake, blows past the cap and is dropped)
+const PARK_DISCOVERY_MAX = 14000;   // ms: wait up to this long for park discovery before showing the route
+
+function polyAreaCentroid(poly){
+  const lat0 = poly.reduce((s,p)=>s+p[0],0)/poly.length;
+  const kx = 111000*Math.cos(toRad(lat0)), ky = 111000;
+  let A=0,cx=0,cy=0;
+  for(let i=0;i<poly.length;i++){
+    const a=poly[i], b=poly[(i+1)%poly.length];
+    const x1=a[1]*kx,y1=a[0]*ky,x2=b[1]*kx,y2=b[0]*ky, cr=x1*y2-x2*y1;
+    A+=cr; cx+=(x1+x2)*cr; cy+=(y1+y2)*cr;
+  }
+  A/=2; if(Math.abs(A)<1) return {area:0, cent:poly[0]};
+  return { area:Math.abs(A), cent:[(cy/(6*A))/ky, (cx/(6*A))/kx] };
+}
+function pointInPoly(pt, poly){
+  const x=pt[1], y=pt[0]; let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const xi=poly[i][1], yi=poly[i][0], xj=poly[j][1], yj=poly[j][0];
+    if(((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/((yj-yi)||1e-12)+xi)) inside=!inside;
+  }
+  return inside;
+}
+async function fetchParks(coords, sig){
+  let s=90,w=180,n=-90,e=-180;
+  coords.forEach(c=>{ if(c[0]<s)s=c[0]; if(c[0]>n)n=c[0]; if(c[1]<w)w=c[1]; if(c[1]>e)e=c[1]; });
+  const m=0.02, bbox=`${(s-m).toFixed(4)},${(w-m).toFixed(4)},${(n+m).toFixed(4)},${(e+m).toFixed(4)}`;
+  const q=`[out:json][timeout:40];(`
+    +`way["leisure"~"^(park|nature_reserve)$"]["name"](${bbox});`
+    +`way["landuse"~"^(forest|recreation_ground)$"](${bbox});`
+    +`way["natural"~"^(wood|heath)$"](${bbox});`
+    +`relation["leisure"~"^(park|nature_reserve)$"]["name"](${bbox});`
+    +`relation["landuse"~"^(forest|recreation_ground)$"](${bbox});`
+    +`relation["natural"~"^(wood|heath)$"](${bbox}););out geom;`;
+  const r = await fetch(OVERPASS, {method:'POST', body:'data='+encodeURIComponent(q), signal:sig});
+  const j = await r.json();
+  const parks=[];
+  (j.elements||[]).forEach(el=>{
+    const rings=[];
+    if(el.type==='way' && el.geometry) rings.push(el.geometry.map(p=>[p.lat,p.lon]));
+    else if(el.type==='relation' && el.members) el.members.forEach(mem=>{ if(mem.role==='outer' && mem.geometry) rings.push(mem.geometry.map(p=>[p.lat,p.lon])); });
+    rings.forEach(poly=>{ if(poly.length>=3){ const ac=polyAreaCentroid(poly); if(ac.area>=PARK_MIN_AREA) parks.push({area:ac.area, cent:ac.cent, poly}); } });
+  });
+  return parks;
+}
+function parkDipWaypoints(coords, parks){
+  const sample = coords.filter((_,i)=>i%3===0); if(sample.length<2) return [];
+  const nearest = cent => { let bi=0,bd=Infinity; for(let i=0;i<sample.length;i++){ const d=haversine(cent,sample[i]); if(d<bd){bd=d;bi=i;} } return {pt:sample[bi], frac:bi/sample.length, dist:bd}; };
+  const chosen=[];
+  parks.sort((a,b)=>b.area-a.area);
+  for(const pk of parks){
+    if(chosen.length>=2) break;
+    const nr=nearest(pk.cent);
+    if(nr.dist<150 || nr.dist>PARK_NEAR) continue;         // already on it / too far
+    let wp=null;                                            // dip ~300 m into the park edge (not its centre)
+    for(let t=0.05;t<=1.0001;t+=0.05){
+      const cand=[ nr.pt[0]+(pk.cent[0]-nr.pt[0])*t, nr.pt[1]+(pk.cent[1]-nr.pt[1])*t ];
+      if(pointInPoly(cand, pk.poly) && haversine(cand, nr.pt)>250){ wp=cand; break; }
+    }
+    if(wp) chosen.push({wp, frac:nr.frac});
+  }
+  return chosen;
+}
+async function enrichWithParks(base, sig){
+  try{
+    if(!state.from || !state.to || base.dist>50000) return null;   // skip very long routes (huge bbox)
+    const parks = await fetchParks(base.coords, sig);
+    const dips = parkDipWaypoints(base.coords, parks);
+    if(!dips.length) return null;
+    // merge park dips with any user stops, in route order, then re-route through them
+    const sample = base.coords.filter((_,i)=>i%3===0);
+    const fracOf = pt => { let bi=0,bd=Infinity; for(let i=0;i<sample.length;i++){ const d=haversine(pt,sample[i]); if(d<bd){bd=d;bi=i;} } return bi/sample.length; };
+    const vias = state.vias.filter(Boolean).map(v=>({wp:[v.lat,v.lon], frac:fracOf([v.lat,v.lon])}));
+    const tryDips = async useDips => {
+      const ordered = useDips.concat(vias).sort((a,b)=>a.frac-b.frac).map(o=>o.wp);
+      const lonlats = [[state.from.lat,state.from.lon], ...ordered, [state.to.lat,state.to.lon]]
+        .map(p=>`${(+p[1]).toFixed(6)},${(+p[0]).toFixed(6)}`).join('|');
+      return parseRoute(await brouterRoute('scenic', 0, sig, lonlats));
+    };
+    let pr = await tryDips(dips), used = dips.length;
+    if(pr.dist > base.dist*PARK_MAX_DETOUR && dips.length>1){
+      pr = await tryDips([dips[0]]); used = 1;        // combo too long → keep just the biggest park
+    }
+    if(pr.dist > base.dist*PARK_MAX_DETOUR) return null;   // still too much detour → keep the direct route
+    pr.viaParks = used;
+    return pr;
+  }catch(e){ return null; }
 }
 
 function parseRoute(geo){
@@ -541,44 +685,44 @@ async function computeRoute(){
   try{ if(routeAbort) routeAbort.abort(); }catch(e){}
   let sig; try{ routeAbort = new AbortController(); sig = routeAbort.signal; }catch(e){ routeAbort=null; }
   renderLoading();
-  let primary;
+  let r;
   try {
-    primary = await brouterRoute(state.profile, 0, sig);
+    r = parseRoute(await brouterRoute(state.profile, 0, sig));
   } catch(err){
     if(err && err.name==='AbortError') return;
     // graceful fallback if a profile isn't available on the server
     if(state.profile!=='trekking'){
-      try{ primary = await brouterRoute('trekking', 0, sig); if(myId===routeReqId) toast('That route style was unavailable — used Recommended'); }
+      try{ r = parseRoute(await brouterRoute('trekking', 0, sig)); if(myId===routeReqId) toast('That route style was unavailable — used Recommended'); }
       catch(e2){ if(e2&&e2.name==='AbortError') return; if(myId===routeReqId){ renderError(e2.message); } return; }
     } else { if(myId===routeReqId) renderError(err.message); return; }
   }
+  if(myId!==routeReqId || !r) return;
+
+  // kick off the shortest-route comparison in parallel (it doesn't block the first render)
+  let comparePromise = null;
+  if(state.profile!=='shortest') comparePromise = shortestBikeRoute(sig).catch(()=>null);
+
+  // discover nearby parks and dip the route through them BEFORE showing anything, so the first
+  // route you see is already the final one (bounded wait, then fall back to the plain scenic route).
+  let pr = null;
+  try{
+    pr = await Promise.race([
+      enrichWithParks(r, sig),
+      new Promise(res=>setTimeout(res, PARK_DISCOVERY_MAX, null))   // give up after PARK_DISCOVERY_MAX
+    ]);
+  }catch(e){ pr = null; }
   if(myId!==routeReqId) return;
-  let r;
-  try { r = parseRoute(primary); } catch(e){ renderError(e.message); return; }
-  state.routes = [r]; state.activeAlt = 0; state.route = r;
+
+  state.routes = pr ? [pr, r] : [r];
+  state.activeAlt = 0; state.route = state.routes[0]; state.compare = null;
   drawRoutes(); fitRoute(); renderSummary();
 
-  // fetch the shortest bike route for distance comparison (best effort)
-  state.compare = null;
+  // apply the distance comparison once it's ready
   if(state.profile==='shortest'){
-    state.compare = { dist:r.dist, time:r.time, coords:r.coords, isSame:true };
-  } else {
-    shortestBikeRoute(sig).then(c=>{ if(myId!==routeReqId) return; state.compare = c; drawRoutes(); renderSummary(); }).catch(()=>{});
+    state.compare = { dist:r.dist, time:r.time, coords:r.coords, isSame:true }; renderSummary();
+  } else if(comparePromise){
+    comparePromise.then(c=>{ if(myId!==routeReqId || !c) return; state.compare = c; drawRoutes(); renderSummary(); });
   }
-
-  // fetch alternatives in background (best effort) — cancel with the primary request
-  [1,2].forEach(idx=>{
-    brouterRoute(r.profile, idx, sig).then(g=>{
-      if(myId!==routeReqId) return;
-      try{
-        const alt = parseRoute(g);
-        // skip near-duplicates
-        if(Math.abs(alt.dist - state.routes[0].dist) < 50 && state.routes.length>1) return;
-        if(state.routes.some(x=>Math.abs(x.dist-alt.dist)<30)) return;
-        state.routes.push(alt); drawRoutes(); renderSummary();
-      }catch(e){}
-    }).catch(()=>{});
-  });
 }
 
 function drawRoutes(){
@@ -599,7 +743,7 @@ function drawRoutes(){
   L.polyline(r.coords, {color:'#ffffff', weight:11, opacity:.95, pane:'routePane', lineCap:'round', lineJoin:'round'}).addTo(routeLayer);
   L.polyline(r.coords, {color:profileColor(r.profile), weight:6.5, opacity:1, pane:'routePane', lineCap:'round', lineJoin:'round'}).addTo(routeLayer);
 }
-function profileColor(p){ return {trekking:'#0e7c5a', fastbike:'#e8590c', safety:'#1971c2', shortest:'#7048e8'}[p]||'#0e7c5a'; }
+function profileColor(p){ return {trekking:'#0e7c5a', hybrid:'#4263eb', scenic:'#2f9e44', fastbike:'#e8590c', safety:'#1971c2', shortest:'#7048e8'}[p]||'#0e7c5a'; }
 function fitRoute(){
   const r=state.route; if(!r) return;
   const m = isMobile();
@@ -614,13 +758,15 @@ function fitRoute(){
    ========================================================= */
 const results = $('#results');
 function renderEmpty(){
-  results.innerHTML = `<div class="hint"><span class="big">🚲</span>
-    Set a start and destination to get a bike route along real cycle paths, ferries and the node network.<br><br>
+  results.innerHTML = `<div class="hint"><span class="big">🌳</span>
+    Set a start and destination to get the <b>top 3 most scenic</b> bike routes — through parks, forests and along the water.<br><br>
     Tip: tap the map to drop a point, or open the menu to save Home &amp; Work.</div>`;
   showSheet(!isMobile());
 }
 function renderLoading(){
-  results.innerHTML = `<div class="summary"><div class="sumtop"><span class="time">Routing…</span></div><div class="loadbar"></div></div>`;
+  results.innerHTML = `<div class="summary"><div class="sumtop"><span class="time">Finding scenic route…</span></div>
+    <div class="cmp-note" style="margin-top:0">Checking parks &amp; cycle paths along the way</div>
+    <div class="loadbar"></div></div>`;
   showSheet(true, 'peek');
 }
 function renderError(msg){
@@ -712,8 +858,9 @@ function elevCard(r){
 }
 function renderSummary(){
   const r = state.route; if(!r){ renderEmpty(); return; }
+  const scenicLabel = i => i===0 ? '🌳 Most scenic' : 'Direct';
   const alts = state.routes.length>1 ? `<div class="alts">${state.routes.map((x,i)=>
-      `<button class="altbtn" data-alt="${i}" data-on="${i===state.activeAlt?1:0}">${i===0?'Best':'Alt '+i} · ${fmtT(x.time)}</button>`).join('')}</div>` : '';
+      `<button class="altbtn" data-alt="${i}" data-on="${i===state.activeAlt?1:0}">${scenicLabel(i)} · ${fmtD(x.dist)}</button>`).join('')}</div>` : '';
   results.innerHTML = `
     <div class="summary">
       <div class="sumtop">
@@ -729,6 +876,10 @@ function renderSummary(){
       </div>
       ${elevCard(r)}
       ${compareCard(r)}
+      <a class="gmaps" id="gmapsBtn" href="${esc(googleMapsUrl()||'#')}" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>
+        Open route in Google Maps
+      </a>
     </div>
     <div class="turns">
       <div class="hd" id="turnsHd" role="button" tabindex="0" aria-expanded="true"><span>Directions · ${r.turns.length} steps</span><span id="turnsCaret">▾</span></div>
@@ -739,6 +890,7 @@ function renderSummary(){
   $('#goBtn').addEventListener('click', startNav);
   $('#saveRouteBtn').addEventListener('click', saveCurrentRoute);
   $('#gpxBtn').addEventListener('click', exportGPX);
+  const gm=$('#gmapsBtn'); if(gm) gm.addEventListener('click', ()=>haptic(10));   // href does the navigation; just a tap buzz
   const ct=$('#cmpToggle'); if(ct) ct.addEventListener('click', ()=>setRoadCompare(!state.showRoadRoute));
   $$('.altbtn').forEach(b=>b.addEventListener('click', ()=>{ state.activeAlt=parseInt(b.dataset.alt); state.route=state.routes[state.activeAlt]; drawRoutes(); renderSummary(); }));
   let open=true; $('#turnsHd').addEventListener('click', ()=>{ open=!open; $('#turnList').style.display=open?'block':'none'; $('#turnsCaret').textContent=open?'▾':'▸'; $('#turnsHd').setAttribute('aria-expanded', open?'true':'false'); });
@@ -751,6 +903,35 @@ function renderTurnList(r){
     return `<div class="turn"><div class="arr ${cls}">${ARROWS[t.type]||'⬆'}</div>
       <div class="tx"><b>${esc(turnText(t))}</b>${d}</div></div>`;
   }).join('');
+}
+
+/* ---- open the same trip in Google Maps (bicycling) ----
+   In-app turn-by-turn will never match Google's; this hands the exact start/stops/
+   destination to Google Maps cycling directions so you can use it when you prefer. */
+/* choose up to maxN waypoints to pin Google to our route: the route's significant turns
+   (Ramer–Douglas–Peucker) plus evenly-spaced fillers to cover the long gaps, then trimmed to
+   maxN in route order. Google caps URLs at 9 waypoints, so this can only approximate. */
+function shapeWaypoints(coords, maxN){
+  const n=coords.length; if(n<=2) return [];
+  let eps=120, keep=rdpKeep(coords, eps);
+  while(keep.length>maxN+1 && eps<4000){ eps*=1.5; keep=rdpKeep(coords, eps); }
+  const idx=new Set(keep.slice(1,-1));                   // turn indices (drop endpoints)
+  for(let k=1;k<=maxN && idx.size<maxN;k++) idx.add(Math.round(n*k/(maxN+1)));  // fillers for the gaps
+  let arr=[...idx].filter(i=>i>0 && i<n-1).sort((a,b)=>a-b);
+  if(arr.length>maxN){ const out=[],step=arr.length/maxN; for(let k=0;k<maxN;k++) out.push(arr[Math.round(k*step)]); arr=out; }
+  return arr.map(i=>coords[i]);
+}
+function googleMapsUrl(){
+  if(!state.from || !state.to) return null;
+  const f = (lat,lon) => `${(+lat).toFixed(5)},${(+lon).toFixed(5)}`;
+  let u = `https://www.google.com/maps/dir/?api=1&origin=${f(state.from.lat,state.from.lon)}&destination=${f(state.to.lat,state.to.lon)}&travelmode=bicycling`;
+  // Pin Google to OUR route's key turns (Google's URL allows at most 9 waypoints; >9 errors).
+  const r = state.route;
+  let wps = (r && r.coords && r.coords.length>2)
+    ? shapeWaypoints(r.coords, 9).map(p=>f(p[0],p[1]))
+    : state.vias.filter(Boolean).map(v=>f(v.lat,v.lon));
+  if(wps.length) u += `&waypoints=${encodeURIComponent(wps.join('|'))}`;
+  return u;
 }
 
 /* ---- GPX export ---- */
@@ -791,26 +972,34 @@ function startNav(){
   if(!state.route){ return; }
   if(!('geolocation' in navigator)){ toast('No GPS on this device'); return; }
   state.nav = true; state.lastSnapIdx = 0; state.offCount=0; state.announced={}; state.follow=true;
+  state.navZoom = 17; state.navZoomed = false; state.courseUp = true; mapBearing = 0;
   $('#nav').classList.add('on'); $('#navbar').classList.add('on');
   $('#search').style.display='none';
   showSheet(false);
   $('#layersBtn').classList.add('hide'); $('#locBtn').classList.add('hide');
+  $('#orientBtn').classList.toggle('hide', !ROTATE);   // orientation toggle only if rotation is available
+  updateOrientBtn();
   document.body.classList.add('navmode');
   updateMuteBtn();
   requestWakeLock();
   haptic(30);
+  // zoom straight in to the nav view if we already have a position
+  if(state.userPos){ state.programmaticMove=true; state.navZoomed=true; map.setView(state.userPos, state.navZoom, {animate:true}); styleUserMarker(); }
   speak('Starting navigation. ' + turnText(state.route.turns[0]));
   state.watchId = navigator.geolocation.watchPosition(onPos, e=>toast('GPS lost — '+e.message),
     {enableHighAccuracy:true, maximumAge:1000, timeout:15000});
 }
 function stopNav(){
-  state.nav=false; state.follow=true;
+  state.nav=false; state.follow=true; state.navZoomed=false;
   if(state.watchId!=null){ navigator.geolocation.clearWatch(state.watchId); state.watchId=null; }
   $('#nav').classList.remove('on'); $('#navbar').classList.remove('on');
   $('#navThen').style.display='none';
   $('#search').style.display='';
   $('#layersBtn').classList.remove('hide'); $('#locBtn').classList.remove('hide');
+  $('#orientBtn').classList.add('hide');
   showRecenter(false);
+  resetBearing();                 // back to north-up for the planning view
+  styleUserMarker();              // arrow puck → plain dot
   document.body.classList.remove('navmode');
   releaseWakeLock();
   if(state.route) showSheet(true, 'peek'); else positionFabs();
@@ -819,13 +1008,58 @@ function stopNav(){
 
 function ensureUserMarker(lat, lon){
   if(!state.userMarker){
-    state.userMarker = L.marker([lat,lon], {icon:L.divIcon({className:'', html:'<div class="userdot"></div>', iconSize:[20,20], iconAnchor:[10,10]}), zIndexOffset:1000}).addTo(map);
+    const html = '<div class="userwrap"><div class="navarrow">'+
+      '<svg width="34" height="34" viewBox="0 0 24 24"><path d="M12 2l7 19-7-4.2L5 21z" fill="#1971c2" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>'+
+      '</div><div class="userdot"></div></div>';
+    state.userMarker = L.marker([lat,lon], {icon:L.divIcon({className:'', html, iconSize:[42,42], iconAnchor:[21,21]}),
+      zIndexOffset:1000, rotation:0, rotateWithView:false}).addTo(map);
   } else state.userMarker.setLatLng([lat,lon]);
+  styleUserMarker();
+}
+/* point the heading arrow: 0 = up (course-up, since the map turns under us);
+   in north-up mode it points along the true compass heading. */
+function styleUserMarker(){
+  const m = state.userMarker; if(!m || !m.getElement) return;
+  const el = m.getElement(); if(!el || !el.querySelector) return;
+  const wrap = el.querySelector('.userwrap'); if(wrap && wrap.classList) wrap.classList.toggle('nav', !!state.nav);
+  const arr = el.querySelector('.navarrow');
+  if(arr && arr.style){
+    const ang = courseUpActive() ? 0 : ((state.heading==null)?0:state.heading);
+    arr.style.transform = 'rotate('+ang.toFixed(1)+'deg)';
+  }
+}
+/* rotate the map so the direction of travel points up (course-up). Smoothed + dead-banded
+   to avoid jitter; the sign is verified against the leaflet-rotate plugin in the browser. */
+function setMapBearing(heading){
+  if(!ROTATE || heading==null) return;
+  const target = ((-heading) % 360 + 360) % 360;
+  let diff = ((target - mapBearing + 540) % 360) - 180;
+  if(Math.abs(diff) < 3) return;            // ignore tiny wobble
+  mapBearing = (mapBearing + diff + 360) % 360;
+  try{ map.setBearing(mapBearing); }catch(e){}
+  updateOrientBtn();
+}
+function resetBearing(){
+  mapBearing = 0;
+  try{ if(ROTATE) map.setBearing(0); }catch(e){}
+  updateOrientBtn();
+}
+/* the compass FAB: shows where north is, taps to toggle course-up / north-up */
+function updateOrientBtn(){
+  const ico = $('#orientIco'); if(ico && ico.style){ ico.style.transform = 'rotate('+(-mapBearing).toFixed(1)+'deg)'; }
+  const b = $('#orientBtn'); if(b && b.classList) b.classList.toggle('on', !!state.courseUp);
 }
 
 function onPos(pos){
   const lat=pos.coords.latitude, lon=pos.coords.longitude;
+  const prev = state.userPos;
   state.userPos=[lat,lon];
+  // heading: prefer GPS course when actually moving, else infer from movement, else keep last
+  let hdg = state.heading;
+  const c = pos.coords;
+  if(typeof c.heading==='number' && !isNaN(c.heading) && (c.speed==null || c.speed>0.7)) hdg = c.heading;
+  else if(prev && haversine(prev,[lat,lon])>4) hdg = bearing(prev,[lat,lon]);
+  if(typeof hdg==='number' && !isNaN(hdg)) state.heading = hdg;
   ensureUserMarker(lat,lon);
   if(!state.nav){ return; }
   const r=state.route;
@@ -836,9 +1070,15 @@ function onPos(pos){
 
   if(state.follow){
     state.programmaticMove=true;
-    // pan (cheap) once we're at follow zoom; only setView when we still need to zoom in
-    if(map.getZoom() < 16) map.setView([lat,lon], 16, {animate:true});
-    else map.panTo([lat,lon], {animate:true, duration:.6});
+    if(courseUpActive()) setMapBearing(state.heading);
+    // zoom in to the navigation zoom ONCE; after that only pan, so the user's own
+    // pinch-zoom (in or out) sticks even as they keep moving.
+    if(!state.navZoomed && map.getZoom() < state.navZoom - 0.5){
+      map.setView([lat,lon], state.navZoom, {animate:true}); state.navZoomed=true;
+    } else {
+      state.navZoomed=true;
+      map.panTo([lat,lon], {animate:true, duration:.6});
+    }
   }
 
   // find next maneuver (first with cum > along + 4m)
@@ -1037,7 +1277,7 @@ function renderDrawer(){
     $$('[data-del-recent]').forEach(b=>b.addEventListener('click', e=>{ e.stopPropagation(); store.recents.splice(parseInt(b.dataset.delRecent),1); saveStore(); renderDrawer(); }));
   }
 }
-function profileName(p){ return {trekking:'Recommended', fastbike:'Fast', safety:'Quiet', shortest:'Shortest'}[p]||p; }
+function profileName(p){ return {trekking:'Recommended', hybrid:'Smart', scenic:'Scenic', fastbike:'Fast', safety:'Quiet', shortest:'Shortest'}[p]||p; }
 
 function useRecent(i){
   const rc = store.recents[i]; if(!rc) return;
@@ -1062,9 +1302,8 @@ function goToPlace(kind){
 function loadRoute(id){
   const rt=store.routes.find(r=>r.id==id); if(!rt) return;
   state.from={...rt.from}; state.to={...rt.to}; state.vias=(rt.vias||[]).map(v=>({...v}));
-  state.profile=rt.profile||'trekking';
+  state.profile='scenic';               // scenic-only app
   $('#inFrom').value=rt.from.label; $('#inTo').value=rt.to.label;
-  $$('.chip').forEach(c=>{ const on=c.dataset.profile===state.profile; c.dataset.on=on?'1':'0'; c.setAttribute('aria-pressed', on?'true':'false'); });
   renderViaFields(); drawEndpoints(); syncChips(); closeDrawer(); computeRoute();
 }
 
@@ -1187,11 +1426,6 @@ function wireSheetDrag(){
 /* =========================================================
    UI WIRING
    ========================================================= */
-$$('.chip').forEach(c=>c.addEventListener('click', ()=>{
-  $$('.chip').forEach(x=>{ x.dataset.on='0'; x.setAttribute('aria-pressed','false'); });
-  c.dataset.on='1'; c.setAttribute('aria-pressed','true');
-  state.profile=c.dataset.profile; haptic(10); maybeRoute();
-}));
 $('#swapBtn').addEventListener('click', ()=>{
   [state.from, state.to] = [state.to, state.from];
   $('#inFrom').value = state.from ? state.from.label : '';
@@ -1209,8 +1443,18 @@ $('#locBtn').addEventListener('click', ()=>{
   }, ()=>toast('Location unavailable — allow access & use HTTPS'), {enableHighAccuracy:true, timeout:10000});
 });
 $('#recenterBtn').addEventListener('click', ()=>{
-  state.follow=true; showRecenter(false);
-  if(state.userPos){ state.programmaticMove=true; map.setView(state.userPos, Math.max(map.getZoom(),16), {animate:true}); }
+  state.follow=true; showRecenter(false); haptic(10);
+  if(courseUpActive() && state.heading!=null) setMapBearing(state.heading);
+  if(state.userPos){ state.programmaticMove=true; map.setView(state.userPos, state.navZoom||Math.max(map.getZoom(),16), {animate:true}); }
+});
+/* orientation toggle: course-up (map rotates with travel) ⇄ north-up */
+$('#orientBtn').addEventListener('click', ()=>{
+  state.courseUp = !state.courseUp; haptic(10);
+  if(state.courseUp){ if(state.heading!=null) setMapBearing(state.heading); }
+  else resetBearing();
+  updateOrientBtn();
+  styleUserMarker();   // refresh the heading arrow immediately (points up in course-up, along heading in north-up)
+  toast(state.courseUp ? 'Course-up — map turns with you' : 'North-up — map stays fixed');
 });
 
 /* theme toggle (brand) */
@@ -1292,7 +1536,6 @@ wireSheetDrag();
 $$('.baseb', pop).forEach(b=>b.dataset.on = b.dataset.base===currentBase?'1':'0');
 // expose toggle/switch semantics to assistive tech + keyboard
 $$('.opt', pop).forEach(o=>{ o.setAttribute('role','switch'); o.setAttribute('tabindex','0'); o.setAttribute('aria-checked', o.dataset.on==='1'?'true':'false'); });
-$$('.chip').forEach(c=>c.setAttribute('aria-pressed', c.dataset.on==='1'?'true':'false'));
 applyTheme();
 renderEmpty();
 renderViaFields();
