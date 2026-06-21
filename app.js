@@ -52,7 +52,7 @@ const state = {
   nav:false, watchId:null, lastSnapIdx:0, offCount:0, rerouting:false,
   userPos:null, userMarker:null, userAcc:null, heading:null,
   announced:{}, follow:true, programmaticMove:false,
-  navZoom:17, navZoomed:false, courseUp:true,   // navigation view: zoomed-in + course-up (rotating map)
+  navZoom:17, navZoomed:false,   // navigation view: zoomed-in, follows the rider (north-up)
   pois:{ nodes:false, parking:false, ferry:false, station:false },
   overlays:{ cycleroutes:false },
   compare:null, showRoadRoute:false,
@@ -61,17 +61,11 @@ const state = {
 /* =========================================================
    MAP
    ========================================================= */
-const map = L.map('map', {
-  zoomControl:false, attributionControl:true, preferCanvas:false,
-  rotate:true, touchRotate:false, shiftKeyRotate:false, rotateControl:false, bearing:0   // leaflet-rotate (ignored if plugin absent)
-}).setView(NL_CENTER, 8);
+// fadeAnimation:false — tiles render at full opacity immediately; the fade-in otherwise gets
+// stuck at opacity 0 when the map pans rapidly during navigation, leaving the map black.
+const map = L.map('map', { zoomControl:false, attributionControl:true, preferCanvas:false, fadeAnimation:false }).setView(NL_CENTER, 8);
 L.control.zoom({ position:'bottomleft' }).addTo(map);
 map.attributionControl.setPrefix('');
-/* map rotation is available only if the leaflet-rotate plugin loaded; otherwise we
-   navigate north-up with a rotating heading arrow (graceful degradation). */
-const ROTATE = typeof map.setBearing === 'function';
-let mapBearing = 0;                       // current course-up rotation we've applied (degrees)
-const courseUpActive = () => ROTATE && state.nav && state.courseUp;
 
 const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 const tileOpts = { maxZoom:20, updateWhenIdle:false, keepBuffer:3 };
@@ -972,19 +966,17 @@ function startNav(){
   if(!state.route){ return; }
   if(!('geolocation' in navigator)){ toast('No GPS on this device'); return; }
   state.nav = true; state.lastSnapIdx = 0; state.offCount=0; state.announced={}; state.follow=true;
-  state.navZoom = 17; state.navZoomed = false; state.courseUp = true; mapBearing = 0;
+  state.navZoom = 17; state.navZoomed = false;
   $('#nav').classList.add('on'); $('#navbar').classList.add('on');
   $('#search').style.display='none';
   showSheet(false);
   $('#layersBtn').classList.add('hide'); $('#locBtn').classList.add('hide');
-  $('#orientBtn').classList.toggle('hide', !ROTATE);   // orientation toggle only if rotation is available
-  updateOrientBtn();
   document.body.classList.add('navmode');
   updateMuteBtn();
   requestWakeLock();
   haptic(30);
   // zoom straight in to the nav view if we already have a position
-  if(state.userPos){ state.programmaticMove=true; state.navZoomed=true; map.setView(state.userPos, state.navZoom, {animate:true}); styleUserMarker(); }
+  if(state.userPos){ state.programmaticMove=true; state.navZoomed=true; map.setView(state.userPos, state.navZoom, {animate:false}); styleUserMarker(); }
   speak('Starting navigation. ' + turnText(state.route.turns[0]));
   state.watchId = navigator.geolocation.watchPosition(onPos, e=>toast('GPS lost — '+e.message),
     {enableHighAccuracy:true, maximumAge:1000, timeout:15000});
@@ -996,9 +988,7 @@ function stopNav(){
   $('#navThen').style.display='none';
   $('#search').style.display='';
   $('#layersBtn').classList.remove('hide'); $('#locBtn').classList.remove('hide');
-  $('#orientBtn').classList.add('hide');
   showRecenter(false);
-  resetBearing();                 // back to north-up for the planning view
   styleUserMarker();              // arrow puck → plain dot
   document.body.classList.remove('navmode');
   releaseWakeLock();
@@ -1016,38 +1006,16 @@ function ensureUserMarker(lat, lon){
   } else state.userMarker.setLatLng([lat,lon]);
   styleUserMarker();
 }
-/* point the heading arrow: 0 = up (course-up, since the map turns under us);
-   in north-up mode it points along the true compass heading. */
+/* the heading arrow points along the true compass heading (north-up map) */
 function styleUserMarker(){
   const m = state.userMarker; if(!m || !m.getElement) return;
   const el = m.getElement(); if(!el || !el.querySelector) return;
   const wrap = el.querySelector('.userwrap'); if(wrap && wrap.classList) wrap.classList.toggle('nav', !!state.nav);
   const arr = el.querySelector('.navarrow');
   if(arr && arr.style){
-    const ang = courseUpActive() ? 0 : ((state.heading==null)?0:state.heading);
+    const ang = (state.heading==null) ? 0 : state.heading;
     arr.style.transform = 'rotate('+ang.toFixed(1)+'deg)';
   }
-}
-/* rotate the map so the direction of travel points up (course-up). Smoothed + dead-banded
-   to avoid jitter; the sign is verified against the leaflet-rotate plugin in the browser. */
-function setMapBearing(heading){
-  if(!ROTATE || heading==null) return;
-  const target = ((-heading) % 360 + 360) % 360;
-  let diff = ((target - mapBearing + 540) % 360) - 180;
-  if(Math.abs(diff) < 3) return;            // ignore tiny wobble
-  mapBearing = (mapBearing + diff + 360) % 360;
-  try{ map.setBearing(mapBearing); }catch(e){}
-  updateOrientBtn();
-}
-function resetBearing(){
-  mapBearing = 0;
-  try{ if(ROTATE) map.setBearing(0); }catch(e){}
-  updateOrientBtn();
-}
-/* the compass FAB: shows where north is, taps to toggle course-up / north-up */
-function updateOrientBtn(){
-  const ico = $('#orientIco'); if(ico && ico.style){ ico.style.transform = 'rotate('+(-mapBearing).toFixed(1)+'deg)'; }
-  const b = $('#orientBtn'); if(b && b.classList) b.classList.toggle('on', !!state.courseUp);
 }
 
 function onPos(pos){
@@ -1070,15 +1038,13 @@ function onPos(pos){
 
   if(state.follow){
     state.programmaticMove=true;
-    if(courseUpActive()) setMapBearing(state.heading);
     // zoom in to the navigation zoom ONCE; after that only pan, so the user's own
     // pinch-zoom (in or out) sticks even as they keep moving.
-    if(!state.navZoomed && map.getZoom() < state.navZoom - 0.5){
-      map.setView([lat,lon], state.navZoom, {animate:true}); state.navZoomed=true;
-    } else {
-      state.navZoomed=true;
-      map.panTo([lat,lon], {animate:true, duration:.6});
-    }
+    // Instant recentre (no pan/zoom animation). Animated follow can leave tiles blank when GPS
+    // updates arrive faster than the animation finishes — instant keeps the map solid.
+    state.navZoomed=true;
+    if(map.getZoom() < state.navZoom - 0.5) map.setView([lat,lon], state.navZoom, {animate:false});
+    else map.panTo([lat,lon], {animate:false});
   }
 
   // find next maneuver (first with cum > along + 4m)
@@ -1444,17 +1410,7 @@ $('#locBtn').addEventListener('click', ()=>{
 });
 $('#recenterBtn').addEventListener('click', ()=>{
   state.follow=true; showRecenter(false); haptic(10);
-  if(courseUpActive() && state.heading!=null) setMapBearing(state.heading);
   if(state.userPos){ state.programmaticMove=true; map.setView(state.userPos, state.navZoom||Math.max(map.getZoom(),16), {animate:true}); }
-});
-/* orientation toggle: course-up (map rotates with travel) ⇄ north-up */
-$('#orientBtn').addEventListener('click', ()=>{
-  state.courseUp = !state.courseUp; haptic(10);
-  if(state.courseUp){ if(state.heading!=null) setMapBearing(state.heading); }
-  else resetBearing();
-  updateOrientBtn();
-  styleUserMarker();   // refresh the heading arrow immediately (points up in course-up, along heading in north-up)
-  toast(state.courseUp ? 'Course-up — map turns with you' : 'North-up — map stays fixed');
 });
 
 /* theme toggle (brand) */
