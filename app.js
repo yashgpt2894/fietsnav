@@ -47,7 +47,7 @@ const saveStore = () => { try{ localStorage.setItem(STORE_KEY, JSON.stringify(st
 const state = {
   from:null, to:null, vias:[],          // each {lat,lon,label}
   profile:'scenic',                      // scenic-only app: always route through parks/water
-  routes:[], activeAlt:0,                 // parsed route objects
+  routes:[], activeAlt:0, routeLabels:[], // parsed route objects + their scenic-tier labels
   route:null,
   nav:false, watchId:null, lastSnapIdx:0, offCount:0, rerouting:false,
   routing:false,                         // a route is currently being computed (find button → spinner)
@@ -693,6 +693,37 @@ function syncFindBtn(){
   b.classList.toggle('hide', !show);
 }
 
+// Two routes count as "the same" if they're a near-identical length AND trace nearly the
+// same line (sampled points stay close) — used to dedupe the scenic candidates.
+function routeSimilar(a, b){
+  if(!a || !b || !a.coords || !b.coords) return false;
+  const da=a.dist, db=b.dist;
+  if(Math.abs(da-db) > Math.max(da,db,1)*0.04) return false;     // >4% length apart → different
+  let tot=0, cnt=0;
+  for(let k=1;k<8;k++){
+    const pa=a.coords[Math.floor(a.coords.length*k/8)];
+    const pb=b.coords[Math.floor(b.coords.length*k/8)];
+    if(pa && pb){ tot+=haversine(pa,pb); cnt++; }
+  }
+  return cnt>0 && (tot/cnt) < 80;                                 // avg sampled separation <80 m → same
+}
+// From a pool of scenic candidates, keep up to 3 DISTINCT ones ordered least→most scenic
+// (proxy: greener routes detour through more parks/paths, so they're longer).
+function pickScenicTiers(pool){
+  const uniq=[];
+  for(const r of pool.filter(Boolean)) if(!uniq.some(u=>routeSimilar(u,r))) uniq.push(r);
+  uniq.sort((a,b)=>a.dist-b.dist);
+  if(uniq.length<=3) return uniq;
+  return [uniq[0], uniq[Math.floor(uniq.length/2)], uniq[uniq.length-1]];   // shortest / middle / longest
+}
+function tierLabels(n){
+  if(n>=3) return ['🍃 Scenic', '🌿 More scenic', '🌳 Most scenic'];
+  if(n===2) return ['🌿 More scenic', '🌳 Most scenic'];
+  return ['🌳 Scenic route'];
+}
+// the recommended default is "More scenic" (the middle tier), else the greenest available
+function recommendedTier(n){ const i = tierLabels(n).findIndex(l=>/More scenic/.test(l)); return i>=0 ? i : Math.max(0, n-1); }
+
 async function computeRoute(){
   if(!state.from || !state.to) return;
   const myId = ++routeReqId;
@@ -700,45 +731,52 @@ async function computeRoute(){
   try{ if(routeAbort) routeAbort.abort(); }catch(e){}
   let sig; try{ routeAbort = new AbortController(); sig = routeAbort.signal; }catch(e){ routeAbort=null; }
   renderLoading();
-  let r;
+
+  // fetch several scenic candidates in parallel: a moderate-green profile (hybrid) plus the
+  // full scenic profile and its alternatives — genuinely different paths, so we can offer a
+  // gradient (and we don't fall back to a single route when parks aren't nearby).
+  const one = async (profile, alt) => {
+    try { return parseRoute(await brouterRoute(profile, alt, sig)); }
+    catch(e){ if(e && e.name==='AbortError') throw e; return null; }
+  };
+  let cands;
   try {
-    r = parseRoute(await brouterRoute(state.profile, 0, sig));
-  } catch(err){
-    if(err && err.name==='AbortError') return;
-    // graceful fallback if a profile isn't available on the server
-    if(state.profile!=='trekking'){
-      try{ r = parseRoute(await brouterRoute('trekking', 0, sig)); if(myId===routeReqId) toast('That route style was unavailable — used Recommended'); }
-      catch(e2){ if(e2&&e2.name==='AbortError') return; if(myId===routeReqId){ renderError(e2.message); } return; }
-    } else { if(myId===routeReqId) renderError(err.message); return; }
+    cands = await Promise.all([ one('hybrid',0), one('scenic',0), one('scenic',1), one('scenic',2) ]);
+  } catch(err){ if(err && err.name==='AbortError') return; cands = []; }
+  if(myId!==routeReqId) return;
+  let scenic0 = cands[1] || cands[2] || cands[3] || cands[0];     // best base for park discovery
+  if(!scenic0){
+    // every scenic call failed → fall back to a plain trekking route so the user still gets something
+    try{ scenic0 = parseRoute(await brouterRoute('trekking', 0, sig)); if(myId===routeReqId) toast('Scenic routing was unavailable — used a standard route'); }
+    catch(e2){ if(e2 && e2.name==='AbortError') return; if(myId===routeReqId) renderError(e2.message); return; }
+    if(myId!==routeReqId) return;
+    cands = [scenic0];
   }
-  if(myId!==routeReqId || !r) return;
 
-  // kick off the shortest-route comparison in parallel (it doesn't block the first render)
-  let comparePromise = null;
-  if(state.profile!=='shortest') comparePromise = shortestBikeRoute(sig).catch(()=>null);
+  // kick off the shortest-route comparison in parallel (doesn't block the render)
+  const comparePromise = shortestBikeRoute(sig).catch(()=>null);
 
-  // discover nearby parks and dip the route through them BEFORE showing anything, so the first
-  // route you see is already the final one (bounded wait, then fall back to the plain scenic route).
+  // discover nearby parks and dip the greenest candidate through them → the "Most scenic" tier.
+  // Done BEFORE showing anything so the routes you see are already final (bounded wait).
   let pr = null;
   try{
     pr = await Promise.race([
-      enrichWithParks(r, sig),
-      new Promise(res=>setTimeout(res, PARK_DISCOVERY_MAX, null))   // give up after PARK_DISCOVERY_MAX
+      enrichWithParks(scenic0, sig),
+      new Promise(res=>setTimeout(res, PARK_DISCOVERY_MAX, null))
     ]);
   }catch(e){ pr = null; }
   if(myId!==routeReqId) return;
 
-  state.routes = pr ? [pr, r] : [r];
-  state.activeAlt = 0; state.route = state.routes[0]; state.compare = null;
+  const tiers = pickScenicTiers([...cands, pr]);
+  state.routes = tiers.length ? tiers : [scenic0];
+  state.routeLabels = tierLabels(state.routes.length);
+  state.activeAlt = recommendedTier(state.routes.length);        // default = "More scenic"
+  state.route = state.routes[state.activeAlt]; state.compare = null;
   state.routing = false; syncFindBtn();
   drawRoutes(); fitRoute(); renderSummary();
 
   // apply the distance comparison once it's ready
-  if(state.profile==='shortest'){
-    state.compare = { dist:r.dist, time:r.time, coords:r.coords, isSame:true }; renderSummary();
-  } else if(comparePromise){
-    comparePromise.then(c=>{ if(myId!==routeReqId || !c) return; state.compare = c; drawRoutes(); renderSummary(); });
-  }
+  comparePromise.then(c=>{ if(myId!==routeReqId || !c) return; state.compare = c; drawRoutes(); renderSummary(); });
 }
 
 function drawRoutes(){
@@ -881,7 +919,9 @@ function elevCard(r){
 }
 function renderSummary(){
   const r = state.route; if(!r){ renderEmpty(); return; }
-  const scenicLabel = i => i===0 ? '🌳 Most scenic' : 'Direct';
+  const labels = state.routeLabels || tierLabels(state.routes.length);
+  const rec = recommendedTier(state.routes.length);
+  const scenicLabel = i => (labels[i] || `Route ${i+1}`) + (i===rec ? ' · Recommended' : '');
   const alts = state.routes.length>1 ? `<div class="alts">${state.routes.map((x,i)=>
       `<button class="altbtn" data-alt="${i}" data-on="${i===state.activeAlt?1:0}">${scenicLabel(i)} · ${fmtD(x.dist)}</button>`).join('')}</div>` : '';
   results.innerHTML = `
@@ -1146,7 +1186,7 @@ async function reroute(lat, lon){
   try{
     const g = await brouterRoute(state.route.profile, 0);
     const r = parseRoute(g);
-    state.routes=[r]; state.activeAlt=0; state.route=r;
+    state.routes=[r]; state.activeAlt=0; state.routeLabels=tierLabels(1); state.route=r;
     state.lastSnapIdx=0; state.announced={};
     drawRoutes();
     speak('Route updated.');
