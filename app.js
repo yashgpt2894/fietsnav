@@ -1362,12 +1362,13 @@ function wireSheetDrag(){
   const down = e=>{
     if(!isMobile()) return;
     const y = (e.touches?e.touches[0].clientY:e.clientY);
-    drag={startY:y, base:sheetY}; const s=$('#sheet'); if(s) s.classList.add('dragging');
+    drag={startY:y, base:sheetY, moved:false}; const s=$('#sheet'); if(s) s.classList.add('dragging');
     if(grab.setPointerCapture && e.pointerId!=null){ try{grab.setPointerCapture(e.pointerId);}catch(_){} }
   };
   const move = e=>{
     if(!drag) return;
     const y=(e.touches?e.touches[0].clientY:e.clientY);
+    if(Math.abs(y-drag.startY)>6) drag.moved=true;
     let ny=Math.max(0, drag.base+(y-drag.startY));
     applySheetY(ny);
     if(e.cancelable) e.preventDefault();
@@ -1375,8 +1376,8 @@ function wireSheetDrag(){
   const up = ()=>{
     if(!drag) return;
     const s=$('#sheet'); if(s) s.classList.remove('dragging');
-    const peak=peekTarget(); const mid=peak/2;
-    setSheetMode(sheetY<mid ? 'full' : 'peek');
+    if(!drag.moved){ setSheetMode(sheetMode==='full' ? 'peek' : 'full'); }   // a tap on the handle toggles peek/full
+    else { const peak=peekTarget(); const mid=peak/2; setSheetMode(sheetY<mid ? 'full' : 'peek'); }
     drag=null;
   };
   grab.addEventListener('pointerdown', down);
@@ -1422,8 +1423,11 @@ $('#themeBtn').addEventListener('click', ()=>{
 
 /* layers popover */
 const pop=$('#pop'), layersBtn=$('#layersBtn');
-function positionPop(){ const rect=layersBtn.getBoundingClientRect(); pop.style.right=(innerWidth-rect.right)+'px';
-  pop.style.bottom=(innerHeight-rect.top+10)+'px'; }
+function positionPop(){
+  if(isMobile()){ pop.style.right=''; pop.style.bottom=''; return; }   // mobile: CSS positions it as a bottom sheet
+  const rect=layersBtn.getBoundingClientRect();
+  pop.style.right=(innerWidth-rect.right)+'px'; pop.style.bottom=(innerHeight-rect.top+10)+'px';
+}
 layersBtn.addEventListener('click', e=>{ e.stopPropagation(); positionPop(); pop.classList.toggle('open'); layersBtn.setAttribute('aria-expanded', pop.classList.contains('open')?'true':'false'); });
 document.addEventListener('click', e=>{ if(!pop.contains(e.target) && e.target!==layersBtn && !layersBtn.contains(e.target)){ pop.classList.remove('open'); layersBtn.setAttribute('aria-expanded','false'); } });
 $$('.baseb', pop).forEach(b=>b.addEventListener('click', ()=>{ switchBase(b.dataset.base); }));

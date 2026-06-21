@@ -301,6 +301,19 @@
   .pop .baseb{font-size:12px;padding:8px 6px;border-radius:10px;background:var(--surface-2);color:var(--ink-2);font-weight:650;
     border:1.5px solid transparent;flex:1 1 40%;text-align:center;transition:background .15s,color .15s}
   .pop .baseb[data-on="1"]{background:var(--accent-l);color:var(--accent-d);border-color:var(--accent)}
+  @media (max-width:759px){
+    /* on phones the popover is a bottom sheet — fits the screen and is thumb-reachable */
+    .pop{left:calc(8px + var(--safe-l));right:calc(8px + var(--safe-r));bottom:calc(8px + var(--safe-b));
+      top:auto;width:auto;max-height:64vh;border-radius:var(--r-lg);padding:8px 8px 12px}
+    .pop.open{animation:sheetup .22s var(--ease)}
+    .pop .opt{padding:14px 12px;font-size:15.5px}
+    .pop .opt .sw{width:46px;height:27px}
+    .pop .opt .sw::after{width:23px;height:23px}
+    .pop .opt[data-on="1"] .sw::after{left:21px}
+    .pop .baseb{padding:12px 6px;font-size:13px}
+    .pop h4{margin:12px 11px 5px}
+  }
+  @keyframes sheetup{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
 
   /* ---------------------------- NAV MODE ---------------------------------- */
   #nav{position:absolute;top:0;left:0;right:0;z-index:1100;display:none;flex-direction:column;
