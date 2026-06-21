@@ -3,9 +3,9 @@
 **A scenic bike-route planner for the Netherlands.** FietsNav finds the *greenest, most
 pleasant* way to cycle between two points — along real cycle paths and through parks, forests
 and waterside trails — then hands the route to **OsmAnd** for voice-guided turn-by-turn
-navigation. It's a single static web app that installs to your phone like a native app.
+navigation. It installs to your phone like a native app.
 
-![type: PWA](https://img.shields.io/badge/type-PWA-0e7c5a) ![stack: vanilla JS + Leaflet](https://img.shields.io/badge/stack-vanilla%20JS%20%2B%20Leaflet-1971c2) ![build: none](https://img.shields.io/badge/build-none-2f9e44) ![license: MIT](https://img.shields.io/badge/license-MIT-7048e8)
+[![Live — fietsnav.netlify.app](https://img.shields.io/badge/live-fietsnav.netlify.app-0e7c5a)](https://fietsnav.netlify.app) ![type: PWA](https://img.shields.io/badge/type-PWA-1971c2) ![stack: vanilla JS + Leaflet](https://img.shields.io/badge/stack-vanilla%20JS%20%2B%20Leaflet-2f9e44) ![license: MIT](https://img.shields.io/badge/license-MIT-7048e8)
 
 > Most cycling apps optimise for *speed*. FietsNav optimises for the *ride*: it deliberately
 > trades a little distance for cycle paths, parks and quiet streets — and shows you exactly how
@@ -13,17 +13,25 @@ navigation. It's a single static web app that installs to your phone like a nati
 
 ---
 
-## Table of contents
+## 👉 Use it
 
-- [What it does](#what-it-does)
-- [How it works](#how-it-works)
-- [Getting started](#getting-started)
-- [Requirements & dependencies](#requirements--dependencies)
-- [Project structure](#project-structure)
-- [Developing](#developing)
-- [Privacy](#privacy)
-- [Credits & data](#credits--data)
-- [License](#license)
+**Open [fietsnav.netlify.app](https://fietsnav.netlify.app)** in your browser — that's it,
+nothing to install to start planning.
+
+For the best experience, **add it to your home screen** so it opens full-screen like a native
+app (and gets quick shortcuts):
+
+| Device | How to install |
+|---|---|
+| **iPhone / iPad (Safari)** | Open the link → tap **Share** → **Add to Home Screen** |
+| **Android (Chrome)** | Open the link → **⋮** menu → **Install app** (or **Add to Home Screen**) |
+| **Desktop (Chrome / Edge)** | Click the **install icon** in the address bar → **Install** |
+
+Once installed, **long-press the app icon** for the **Navigate home** / **Navigate to work**
+shortcuts. The site is served over HTTPS, so the **"use my location"** feature works.
+
+> Planning, search and map tiles need a data connection; the app caches its shell so it opens
+> instantly and works offline apart from live data.
 
 ---
 
@@ -44,15 +52,13 @@ navigation. It's a single static web app that installs to your phone like a nati
   see exactly how much extra distance the scenery costs.
 - **Elevation & surface profile** under every route — how much you climb and how much is paved.
 - **Multi-stop trips** — add intermediate stops, drag any pin to fine-tune, or tap the map to
-  drop a start/stop/destination.
+  drop a start / stop / destination.
 
 ### Navigation & sharing
 - **Start in OsmAnd.** One tap opens your exact route in [OsmAnd](https://osmand.net) on its
   bike profile for turn-by-turn voice navigation. If OsmAnd isn't installed, you're sent to the
   App Store / Play Store. *(Why OsmAnd and not Google Maps? See [How it works](#how-it-works).)*
 - **GPX export** to take the precise track to a bike computer, Strava, Komoot or OsmAnd.
-- **Open in Google Maps** is intentionally **not** offered — Google can't follow a custom route
-  (see below).
 
 ### Map & places
 - **Four base maps** — CyclOSM (bike map), Light, Standard and Dark — with overlays for
@@ -64,11 +70,8 @@ navigation. It's a single static web app that installs to your phone like a nati
 - **Saved Home / Work and favourite routes**, stored privately in your browser.
 
 ### The app itself
-- **Installable PWA** — add it to your home screen and it opens full-screen with no browser
-  bars, plus **"Navigate home / Navigate to work"** long-press shortcuts.
+- **Installable PWA** with home-screen shortcuts and an **offline app shell**.
 - **Light / dark mode** that auto-follows your phone, with a matching dark map.
-- **Offline app shell** — opens instantly and works offline for everything except live data
-  (routing, search, tiles).
 - **No account, no sign-up, no tracking.**
 
 ---
@@ -103,79 +106,14 @@ why FietsNav uses OsmAnd. For pixel-perfect fidelity, the GPX export carries eve
 
 ---
 
-## Getting started
+## Tech & dependencies
 
-You don't need to build anything — FietsNav is plain static files.
+FietsNav is a **single static web app** — vanilla HTML/CSS/JS with [Leaflet](https://leafletjs.com)
+for the map. **No build step and no bundled npm dependencies**; Leaflet is loaded from a CDN.
+It runs in any modern evergreen browser (Chrome, Edge, Firefox, Safari 15+); geolocation needs a
+secure context (`https://`), which the live site provides.
 
-### Run it locally (fastest)
-
-```bash
-git clone https://github.com/yashgpt2894/fietsnav.git
-cd fietsnav
-npm run dev          # serves http://localhost:8000
-```
-
-Open <http://localhost:8000>. `localhost` is a secure context, so geolocation ("my location")
-works. `npm run dev` just runs a static file server (`npx http-server`) — see
-[requirements](#requirements--dependencies).
-
-> No Node? Any static server works, e.g. `python3 -m http.server 8000`, or just open the folder
-> with a tool like VS Code Live Server.
-
-### Put it on your phone
-
-Live GPS needs **HTTPS** (a browser rule), so the app must be served over `https://`.
-
-**Option A — Netlify Drop (no tools, ~2 min).** Open [Netlify Drop](https://app.netlify.com/drop)
-and **drag the whole project folder onto it**. You instantly get a private `https://…netlify.app`
-link. Open it on your phone, then:
-- **iPhone (Safari):** Share → **Add to Home Screen**
-- **Android (Chrome):** ⋮ → **Install app** / **Add to Home Screen**
-
-**Option B — GitHub Pages.** With GitHub Pro/Team, enable Pages for the repo
-(Settings → Pages → *Deploy from branch*) and open `https://yashgpt2894.github.io/fietsnav/`.
-*(On a free plan, Pages on a private repo publishes it publicly — prefer Netlify Drop.)*
-
-### Build a native iOS / Android app (optional)
-
-A [Capacitor](https://capacitorjs.com) project is wired up. With a Mac + Xcode (iOS) or Android
-Studio (Android):
-
-```bash
-npm run cap:install   # installs Capacitor core + ios + android
-npm run cap:add       # creates the native projects
-npm run cap:sync      # copies the web app into them
-npm run ios           # or: npm run android
-```
-
-Full steps and the required location permissions are in **[NATIVE.md](NATIVE.md)**.
-
----
-
-## Requirements & dependencies
-
-**The web app has no build step and zero bundled npm dependencies.** Leaflet is loaded from a
-CDN; everything else is hand-written vanilla JS. So all you need to *run* it is a static file
-server (or an HTTPS host).
-
-### Tooling
-
-| Need it for | Requirement |
-|---|---|
-| `npm run dev` / `npm test` | **Node.js 18+** (the dev server is `npx http-server`; tests use Node's built-in `vm`/`fs` — no packages to install) |
-| Native iOS build | macOS + **Xcode** |
-| Native Android build | **Android Studio** |
-| Native (either) | Capacitor packages, installed on demand by `npm run cap:install` |
-
-### Browser support
-
-Any modern evergreen browser (Chrome, Edge, Firefox, Safari 15+). Geolocation requires a
-**secure context** — `https://` or `localhost`.
-
-### Runtime services
-
-FietsNav calls these **free, public** services at runtime (an internet connection is needed for
-routing, search and map tiles). No API keys are required.
+At runtime it calls these **free, public** services (no API keys required):
 
 | Service | Used for |
 |---|---|
@@ -186,7 +124,8 @@ routing, search and map tiles). No API keys are required.
 | [waymarkedtrails](https://cycling.waymarkedtrails.org) | Cycle-route network overlay |
 | [OsmAnd](https://osmand.net) | Turn-by-turn navigation (hand-off) |
 
-> These are shared community services — please use them gently.
+A [Capacitor](https://capacitorjs.com) setup for packaging native iOS/Android builds is included
+— see **[NATIVE.md](NATIVE.md)**.
 
 ---
 
@@ -203,25 +142,6 @@ routing, search and map tiles). No API keys are required.
 | `icon-192.png`, `icon-512.png` | Home-screen / install icons |
 | `capacitor.config.json`, `NATIVE.md` | Native (iOS/Android) build config + instructions |
 | `test/smoke.test.js` | Pure-logic smoke tests (geometry, turns, formatting, comparison) |
-| `CLAUDE.md`, `HANDOVER.md` | Project context & handover notes |
-
----
-
-## Developing
-
-```bash
-npm run dev      # static server at http://localhost:8000
-npm test         # 25 pure-logic smoke tests (no browser or network needed)
-npm run check    # syntax-checks app.js + sw.js, then runs the tests
-```
-
-**Test it like a phone:** open the app in Chrome, press **F12**, click the device-toolbar (📱)
-or **Ctrl/⌘ + Shift + M**, and pick iPhone/Pixel. Geolocation can be faked from
-*⋮ → More tools → Sensors → Location* to see the "my location" dot.
-
-The smoke tests load `app.js` inside a mocked-browser sandbox and exercise the pure functions
-(haversine, bearings, turn classification, distance/time formatting, the comparison card), so
-they run fast with no browser or network. Keep module-level code sandbox-safe.
 
 ---
 
