@@ -2,14 +2,13 @@
    - App shell + Leaflet: stale-while-revalidate (fast open, auto-updates next load).
    - Map tiles: cache-first with a size cap (fast revisits + partial offline).
    - Routing / search / POIs (BRouter, Photon, Overpass): always network (live data). */
-const SHELL = 'fietsnav-shell-v4';
+const SHELL = 'fietsnav-shell-v5';
 const TILES = 'fietsnav-tiles-v1';
 const TILE_CAP = 250;   // tiles are cross-origin/opaque; each inflates quota (~MBs), so cap low
 const LOCAL = ['./', './index.html', './app.js', './scenic.brf', './smart.brf', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 const CDN = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-  'https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js'
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 ];
 const DATA = /brouter\.de|photon\.komoot|overpass-api/;                       // live, never cache
 const TILE = /tile-cyclosm|basemaps\.cartocdn|tile\.openstreetmap|waymarkedtrails|\.tile\./; // cacheable imagery

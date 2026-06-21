@@ -23,7 +23,7 @@ const sandbox = {
 };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-const EXPORTS = '\n;globalThis.__T={haversine,bearing,compass,fmtD,fmtT,cumulative,rdpKeep,classifyTurn,buildTurns,parseName,namesFromMessages,projectToSeg,turnText,compareCard,state};';
+const EXPORTS = '\n;globalThis.__T={haversine,bearing,compass,fmtD,fmtT,cumulative,rdpKeep,classifyTurn,buildTurns,parseName,namesFromMessages,turnText,compareCard,state};';
 vm.runInContext(code + EXPORTS, sandbox, { filename: 'app.js' });
 const T = sandbox.__T;
 if (!T) { console.log('FAIL: app.js did not load / export'); process.exit(1); }
@@ -49,11 +49,6 @@ ok('-90 -> left', T.classifyTurn(-90) === 'left');
 ok('+25 -> slight-right', T.classifyTurn(25) === 'slight-right');
 ok('170 -> uturn', T.classifyTurn(170) === 'uturn');
 ok('10 -> null (no turn)', T.classifyTurn(10) === null);
-
-console.log('-- projection --');
-const seg = T.projectToSeg([52.10, 5.105], [52.10, 5.10], [52.10, 5.11]);
-ok('midpoint t~0.5', seg.t > 0.45 && seg.t < 0.55);
-ok('dist~0', seg.dist < 2);
 
 console.log('-- buildTurns on L-shaped route (east then north) --');
 const coords = [];

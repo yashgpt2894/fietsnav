@@ -77,9 +77,7 @@
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     color:var(--ink);background:var(--bg);
     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-  #map{position:absolute;inset:0;z-index:0;background:var(--bg);transform-origin:50% 50%;transition:transform .3s ease-out}
-  /* course-up: JS sizes #map to a centered square covering the viewport diagonal so the rotated
-     corners stay filled; body's overflow:hidden clips the excess. */
+  #map{position:absolute;inset:0;z-index:0;background:var(--bg)}
   [data-theme="dark"] .leaflet-tile{filter:none}
   .leaflet-control-attribution{font-size:10px;background:var(--glass);color:var(--muted);
     -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border-radius:6px 0 0 0}
@@ -272,7 +270,7 @@
   .startrow{display:flex;gap:10px}
   .startbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--accent);color:var(--on-accent);
     font-size:16px;font-weight:750;padding:15px;border-radius:14px;box-shadow:0 6px 18px rgba(14,124,90,.4);
-    transition:transform .12s,box-shadow .15s}
+    text-decoration:none;transition:transform .12s,box-shadow .15s}
   .startbtn:active{transform:scale(.98)}
   .startbtn.sec{flex:none;width:54px;background:var(--surface-2);color:var(--accent);box-shadow:none;border:1.5px solid var(--line)}
   .startbtn.sec:hover{border-color:var(--accent)}
@@ -307,10 +305,7 @@
     backdrop-filter:var(--blur);border:1px solid var(--glass-brd);box-shadow:var(--shadow-2);
     display:grid;place-items:center;color:var(--ink);transition:transform .12s,color .15s}
   .fab:active{transform:scale(.92)}
-  .fab.on{background:var(--accent);color:var(--on-accent);border-color:transparent}
   .fab svg{width:23px;height:23px}
-  .fab.hide{display:none}
-  #recenterBtn{color:var(--quiet)}
 
   /* layers/poi popover */
   .pop{position:absolute;z-index:1070;background:var(--surface);border:1px solid var(--line);border-radius:18px;
@@ -342,32 +337,6 @@
   }
   @keyframes sheetup{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
 
-  /* ---------------------------- NAV MODE ---------------------------------- */
-  #nav{position:absolute;top:0;left:0;right:0;z-index:1100;display:none;flex-direction:column;
-    padding:calc(8px + var(--safe-t)) calc(8px + var(--safe-r)) 0 calc(8px + var(--safe-l))}
-  #nav.on{display:flex;animation:dropin .35s var(--spring)}
-  @keyframes dropin{from{transform:translateY(-12px);opacity:0}to{transform:none;opacity:1}}
-  .navban{background:linear-gradient(135deg,var(--accent),var(--accent-d));color:#fff;border-radius:20px;
-    box-shadow:var(--shadow-3);padding:16px 18px;display:flex;align-items:center;gap:16px}
-  .navban .narr{font-size:40px;line-height:1;flex:none;width:46px;text-align:center}
-  .navban .ntxt{flex:1;min-width:0}
-  .navban .nin{font-size:13px;opacity:.9;font-weight:650}
-  .navban .nmain{font-size:22px;font-weight:800;line-height:1.15;margin-top:1px;letter-spacing:-.3px}
-  .navban .nname{font-size:13.5px;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
-  .navthen{margin:0 12px;background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
-    border-radius:0 0 16px 16px;padding:8px 16px;font-size:12.5px;color:var(--ink-2);display:none;align-items:center;gap:8px;
-    box-shadow:var(--shadow-2);font-weight:600}
-  #navbar{position:absolute;bottom:0;left:0;right:0;z-index:1100;display:none;align-items:center;gap:14px;
-    padding:15px calc(16px + var(--safe-r)) calc(15px + var(--safe-b)) calc(16px + var(--safe-l));
-    background:var(--surface);box-shadow:0 -8px 30px rgba(16,24,32,.2);border-radius:22px 22px 0 0}
-  #navbar.on{display:flex}
-  #navbar .eta{font-size:23px;font-weight:800;color:var(--accent-d);line-height:1;letter-spacing:-.4px}
-  #navbar .meta{font-size:13px;color:var(--muted);margin-top:3px}
-  #navbar .stop{margin-left:auto;background:color-mix(in srgb,var(--danger) 16%,transparent);color:var(--danger);
-    font-weight:750;padding:13px 22px;border-radius:13px;font-size:15px}
-  #navbar .stop:active{transform:scale(.97)}
-  #navbar .mute{width:48px;height:48px;border-radius:50%;background:var(--surface-2);display:grid;place-items:center;color:var(--ink-2);flex:none}
-  #navbar .mute.off{color:var(--danger)}
 
   /* drawer */
   #drawer{position:absolute;inset:0;z-index:1200;background:rgba(8,14,18,.45);display:none;
@@ -392,12 +361,6 @@
   .seg{display:flex;gap:4px;margin:2px 20px;background:var(--surface-2);border-radius:11px;padding:4px}
   .seg button{flex:1;padding:8px;border-radius:8px;font-size:13px;font-weight:650;color:var(--ink-2);transition:background .15s,color .15s}
   .seg button[data-on="1"]{background:var(--surface);color:var(--accent-d);box-shadow:var(--shadow-1)}
-  .toggle-row{display:flex;align-items:center;gap:12px;padding:11px 20px;font-size:14.5px;cursor:pointer}
-  .toggle-row:hover{background:var(--surface-2)}
-  .toggle-row .sw{margin-left:auto;width:40px;height:23px;border-radius:12px;background:var(--surface-3);position:relative;transition:background .18s;flex:none}
-  .toggle-row .sw::after{content:"";position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;transition:left .18s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
-  .toggle-row[data-on="1"] .sw{background:var(--accent)}
-  .toggle-row[data-on="1"] .sw::after{left:19px}
   .draw-in .closex{position:absolute;top:calc(14px + var(--safe-t));right:14px;width:36px;height:36px;border-radius:50%;
     background:var(--surface-2);display:grid;place-items:center;color:var(--muted)}
   .draw-in .closex:hover{color:var(--ink)}
@@ -413,20 +376,12 @@
     box-shadow:var(--shadow-3);opacity:0;transition:opacity .25s,transform .25s var(--ease);pointer-events:none;max-width:86%;text-align:center}
   #toast.on{opacity:1;transform:translateX(-50%)}
 
-  .spin{display:inline-block;width:16px;height:16px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
-  @keyframes sp{to{transform:rotate(360deg)}}
-
   /* map markers */
   .markpin{filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
-  /* user location: a plain dot when planning, a directional arrow puck while navigating */
+  /* user location dot */
   .userwrap{position:relative;width:42px;height:42px}
   .userdot{position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;background:var(--quiet);
     border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px rgba(25,113,194,.3),0 2px 6px rgba(0,0,0,.3)}
-  .navarrow{position:absolute;left:50%;top:50%;width:38px;height:38px;margin:-19px 0 0 -19px;display:none;
-    place-items:center;transform-origin:50% 50%;transition:transform .3s var(--ease)}
-  .navarrow svg{filter:drop-shadow(0 2px 4px rgba(0,0,0,.45))}
-  .userwrap.nav .userdot{display:none}
-  .userwrap.nav .navarrow{display:grid}
   .poi-emoji{font-size:19px;text-align:center;line-height:27px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}
   .nodemk{background:var(--quiet);color:#fff;border:2px solid #fff;border-radius:50%;width:28px;height:28px;line-height:24px;
     text-align:center;font-size:11px;font-weight:750;box-shadow:0 2px 6px rgba(0,0,0,.45)}
@@ -528,12 +483,6 @@
 
 <!-- floating controls -->
 <div id="fabs">
-  <button class="fab hide" id="compassBtn" title="Course-up / north-up" aria-label="Toggle course-up">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l4 9-4-2-4 2 4-9z" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9.5"/></svg>
-  </button>
-  <button class="fab hide" id="recenterBtn" title="Re-center" aria-label="Re-center on my location">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="4"/></svg>
-  </button>
   <button class="fab" id="layersBtn" title="Map layers & points" aria-label="Layers" aria-haspopup="true" aria-expanded="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"/></svg>
   </button>
@@ -561,29 +510,6 @@
   <div class="opt" data-poi="station"><span class="em">🚉</span><span>Train stations</span><span class="sw"></span></div>
 </div>
 
-<!-- navigation mode -->
-<div id="nav">
-  <div class="navban">
-    <div class="narr" id="navArr">⬆</div>
-    <div class="ntxt">
-      <div class="nin" id="navIn">Starting…</div>
-      <div class="nmain" id="navMain">Head out</div>
-      <div class="nname" id="navName"></div>
-    </div>
-  </div>
-  <div class="navthen" id="navThen"></div>
-</div>
-<div id="navbar">
-  <button class="mute" id="muteBtn" title="Voice on/off">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 010 7M19 5a9 9 0 010 14"/></svg>
-  </button>
-  <div>
-    <div class="eta" id="navEta">—</div>
-    <div class="meta" id="navMeta">—</div>
-  </div>
-  <button class="stop" id="stopBtn">Stop</button>
-</div>
-
 <!-- drawer -->
 <div id="drawer">
   <div class="draw-in">
@@ -601,8 +527,6 @@
       <button data-theme-pref="light">Light</button>
       <button data-theme-pref="dark">Dark</button>
     </div>
-    <div class="toggle-row" id="voiceToggle"><span class="em">🔊</span><span>Voice guidance</span><span class="sw"></span></div>
-    <div class="toggle-row" id="awakeToggle"><span class="em">📱</span><span>Keep screen on while navigating</span><span class="sw"></span></div>
     <div class="draw-sec" style="margin-top:18px">About</div>
     <div class="draw-empty">Routing by BRouter · Search by Photon · POIs by Overpass · Map data © OpenStreetMap contributors. Built for personal use.</div>
   </div>

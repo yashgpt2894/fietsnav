@@ -33,13 +33,12 @@ function bearing(a, b){
 const compass = b => ['north','north-east','east','south-east','south','south-west','west','north-west'][Math.round(b/45)%8];
 function fmtD(m){ if(m==null) return '—'; if(m<950) return Math.round(m/10)*10+' m'; return (m/1000).toFixed(m<9500?1:0)+' km'; }
 function fmtT(s){ s=Math.round(s); const h=Math.floor(s/3600), m=Math.round((s%3600)/60); return h?`${h} h ${m} min`:`${m} min`; }
-function etaClock(sec){ return new Date(Date.now()+sec*1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
 function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 const isMobile = () => (typeof window!=='undefined' && window.matchMedia) ? window.matchMedia('(max-width:759px)').matches : (innerWidth<760);
 function haptic(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} }
 
 /* ---------- persistent store ---------- */
-let store = { settings:{ base:'cycl', voice:true, theme:'auto', keepAwake:true }, places:{}, routes:[], recents:[] };
+let store = { settings:{ base:'cycl', theme:'auto' }, places:{}, routes:[], recents:[] };
 try { const s = JSON.parse(localStorage.getItem(STORE_KEY)); if(s){ store = Object.assign(store, s); store.settings = Object.assign({base:'cycl',voice:true,theme:'auto',keepAwake:true}, s.settings||{}); store.recents = s.recents||[]; } } catch(e){}
 const saveStore = () => { try{ localStorage.setItem(STORE_KEY, JSON.stringify(store)); }catch(e){} };
 
@@ -49,12 +48,8 @@ const state = {
   profile:'scenic',                      // scenic-only app: always route through parks/water
   routes:[], activeAlt:0, routeLabels:[], // parsed route objects + their scenic-tier labels
   route:null,
-  nav:false, watchId:null, lastSnapIdx:0, offCount:0, rerouting:false,
   routing:false,                         // a route is currently being computed (find button → spinner)
-  userPos:null, userMarker:null, userAcc:null, heading:null,
-  announced:{}, follow:true, programmaticMove:false,
-  navZoom:17, navZoomed:false,   // navigation view: zoomed-in, follows the rider
-  courseUp:true, compassHeading:null,   // course-up rotates the map so travel direction is up
+  userPos:null, userMarker:null,         // the "my location" dot on the map
   pois:{ nodes:false, parking:false, ferry:false, station:false },
   overlays:{ cycleroutes:false },
   compare:null, showRoadRoute:false,
@@ -93,11 +88,6 @@ const routePane = map.createPane('routePane'); routePane.style.zIndex = 450;
 const routeLayer = L.layerGroup().addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
 const poiLayer = L.layerGroup().addTo(map);
-
-/* track user vs programmatic map moves (for the re-center button in nav) */
-map.on('dragstart', ()=>{ if(state.nav){ state.follow=false; showRecenter(true); } });
-/* remember the user's own pinch-zoom during nav so it sticks as they keep moving */
-map.on('zoomend', ()=>{ if(state.nav && !state.programmaticMove){ state.navZoom = map.getZoom(); state.navZoomed = true; } });
 
 /* =========================================================
    GEOCODING (Photon) + autocomplete
@@ -286,7 +276,6 @@ function renderViaFields(){
 
 /* map click → set point via popup */
 map.on('click', async (e)=>{
-  if(state.nav) return;
   const {lat, lng} = e.latlng;
   const html = `<div style="font-size:13px;min-width:158px">
     <div class="lp-title">Drop a point here</div>
@@ -1008,17 +997,13 @@ function renderSummary(){
       </div>
       ${alts}
       <div class="startrow">
-        <button class="startbtn" id="goBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg> Start</button>
+        <a class="startbtn" id="goBtn" href="${esc(osmandMapUrl()||'#')}" target="_blank" rel="noopener noreferrer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M16 8l-2.5 6.5L8 16l2.5-6.5z" fill="currentColor" stroke="none"/></svg> Start in OsmAnd</a>
         <button class="startbtn sec" id="gpxBtn" title="Export GPX" aria-label="Export GPX"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>
         <button class="startbtn sec" id="saveRouteBtn" title="Save route" aria-label="Save route">★</button>
       </div>
+      <a class="osmand-get-link" id="osmandGet" href="#" target="_blank" rel="noopener noreferrer">Don’t have OsmAnd? Install it free →</a>
       ${elevCard(r)}
       ${compareCard(r)}
-      <a class="gmaps osmand" id="osmandBtn" href="${esc(osmandMapUrl()||'#')}" target="_blank" rel="noopener noreferrer">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M16 8l-2.5 6.5L8 16l2.5-6.5z" fill="currentColor" stroke="none"/></svg>
-        Navigate in OsmAnd <span class="gm-note">· bike route</span>
-      </a>
-      <a class="osmand-get-link" id="osmandGet" href="#" target="_blank" rel="noopener noreferrer">Don’t have OsmAnd? Install it free →</a>
     </div>
     <div class="turns">
       <div class="hd" id="turnsHd" role="button" tabindex="0" aria-expanded="true"><span>Directions · ${r.turns.length} steps</span><span id="turnsCaret">▾</span></div>
@@ -1026,10 +1011,9 @@ function renderSummary(){
     </div>`;
   renderTurnList(r);
   showSheet(true, sheetMode || 'peek');
-  $('#goBtn').addEventListener('click', startNav);
+  $('#goBtn').addEventListener('click', ()=>haptic(10));          // href opens the route in OsmAnd
   $('#saveRouteBtn').addEventListener('click', saveCurrentRoute);
   $('#gpxBtn').addEventListener('click', exportGPX);
-  const os=$('#osmandBtn'); if(os) os.addEventListener('click', ()=>haptic(10));   // href opens OsmAnd
   const og=$('#osmandGet'); if(og){ og.href = osmandStoreUrl(); og.addEventListener('click', ()=>haptic(10)); }
   const ct=$('#cmpToggle'); if(ct) ct.addEventListener('click', ()=>setRoadCompare(!state.showRoadRoute));
   $$('.altbtn').forEach(b=>b.addEventListener('click', ()=>{ state.activeAlt=parseInt(b.dataset.alt); state.route=state.routes[state.activeAlt]; drawRoutes(); renderSummary(); }));
@@ -1099,280 +1083,20 @@ function osmandStoreUrl(){
 }
 
 /* =========================================================
-   NAVIGATION (GPS follow + voice + reroute)
+   USER LOCATION  (turn-by-turn navigation is handed off to OsmAnd)
    ========================================================= */
-let wakeLock=null;
-async function requestWakeLock(){
-  if(!store.settings.keepAwake) return;
-  try{ if(navigator.wakeLock){ wakeLock = await navigator.wakeLock.request('screen'); } }catch(e){}
-}
-function releaseWakeLock(){ try{ if(wakeLock){ wakeLock.release(); wakeLock=null; } }catch(e){} }
-if(typeof document!=='undefined' && document.addEventListener){
-  document.addEventListener('visibilitychange', ()=>{ if(state.nav && document.visibilityState==='visible') requestWakeLock(); });
-}
-
-function showRecenter(on){ const b=$('#recenterBtn'); if(b) b.classList.toggle('hide', !on); }
-
-function startNav(){
-  if(!state.route){ return; }
-  if(!('geolocation' in navigator)){ toast('No GPS on this device'); return; }
-  state.nav = true; state.lastSnapIdx = 0; state.offCount=0; state.announced={}; state.follow=true;
-  state.navZoom = 17; state.navZoomed = false; state.courseUp = true;
-  $('#nav').classList.add('on'); $('#navbar').classList.add('on');
-  $('#search').style.display='none';
-  showSheet(false);
-  $('#layersBtn').classList.add('hide'); $('#locBtn').classList.add('hide');
-  $('#compassBtn').classList.remove('hide');
-  document.body.classList.add('navmode');
-  updateMuteBtn();
-  requestWakeLock();
-  enableOrientation();                 // this tap also grants iOS compass permission + unlocks speech
-  haptic(30);
-  // zoom straight in to the nav view if we already have a position, then turn on course-up
-  if(state.userPos){ state.programmaticMove=true; state.navZoomed=true; map.setView(state.userPos, state.navZoom, {animate:false}); }
-  setCourseUp(true);
-  speak('Starting navigation. ' + turnText(state.route.turns[0]));
-  state.watchId = navigator.geolocation.watchPosition(onPos, e=>toast('GPS lost — '+e.message),
-    {enableHighAccuracy:true, maximumAge:1000, timeout:15000});
-}
-function stopNav(){
-  state.nav=false; state.follow=true; state.navZoomed=false;
-  if(state.watchId!=null){ navigator.geolocation.clearWatch(state.watchId); state.watchId=null; }
-  disableOrientation();
-  // undo course-up: clear rotation + the oversized map, then resize back
-  const mapEl = map.getContainer();
-  if(mapEl){ if(mapEl.classList) mapEl.classList.remove('courseup'); if(mapEl.style) clearMapSize(mapEl); }
-  try{ map.invalidateSize({animate:false}); }catch(e){}
-  $('#nav').classList.remove('on'); $('#navbar').classList.remove('on');
-  $('#navThen').style.display='none';
-  $('#search').style.display='';
-  $('#layersBtn').classList.remove('hide'); $('#locBtn').classList.remove('hide');
-  $('#compassBtn').classList.add('hide');
-  showRecenter(false);
-  styleUserMarker();              // arrow puck → plain dot
-  document.body.classList.remove('navmode');
-  releaseWakeLock();
-  if(state.route) showSheet(true, 'peek'); else positionFabs();
-  try{ speechSynthesis.cancel(); }catch(e){}
-}
-
+/* show the user's current location as a dot on the map (used by "my location" + soft load) */
 function ensureUserMarker(lat, lon){
   if(!state.userMarker){
-    const html = '<div class="userwrap"><div class="navarrow">'+
-      '<svg width="34" height="34" viewBox="0 0 24 24"><path d="M12 2l7 19-7-4.2L5 21z" fill="#1971c2" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>'+
-      '</div><div class="userdot"></div></div>';
-    state.userMarker = L.marker([lat,lon], {icon:L.divIcon({className:'', html, iconSize:[42,42], iconAnchor:[21,21]}),
-      zIndexOffset:1000, rotation:0, rotateWithView:false}).addTo(map);
+    const html = '<div class="userwrap"><div class="userdot"></div></div>';
+    state.userMarker = L.marker([lat,lon], {icon:L.divIcon({className:'', html, iconSize:[42,42], iconAnchor:[21,21]}), zIndexOffset:1000}).addTo(map);
   } else state.userMarker.setLatLng([lat,lon]);
-  styleUserMarker();
 }
-// the heading we orient by: GPS travel direction when we have it (stable while riding),
-// else the device compass (good before the first move / when stationary).
-function currentHeading(){
-  if(typeof state.heading==='number' && !isNaN(state.heading)) return state.heading;
-  if(typeof state.compassHeading==='number' && !isNaN(state.compassHeading)) return state.compassHeading;
-  return 0;
-}
-function styleUserMarker(){
-  const m = state.userMarker; if(!m || !m.getElement) return;
-  const el = m.getElement(); if(!el || !el.querySelector) return;
-  const wrap = el.querySelector('.userwrap'); if(wrap && wrap.classList) wrap.classList.toggle('nav', !!state.nav);
-  const arr = el.querySelector('.navarrow');
-  if(arr && arr.style){
-    // course-up: the map is rotated by -heading, so rotate the arrow by +heading → it points UP.
-    // north-up: rotate the arrow to the travel direction.
-    const ang = (state.nav && state.courseUp) ? currentHeading() : (state.heading==null ? 0 : state.heading);
-    arr.style.transform = 'rotate('+ang.toFixed(1)+'deg)';
-  }
-}
-// course-up: rotate the WHOLE map (CSS transform on the Leaflet container, oversized so the
-// rotated corners stay filled). No plugin — leaflet-rotate previously pushed the map off-screen.
-function applyMapRotation(){
-  const el = map.getContainer(); if(!el || !el.style) return;
-  if(state.nav && state.courseUp){ el.style.transform = 'rotate('+(-currentHeading()).toFixed(1)+'deg)'; }
-  else { el.style.transform = ''; }
-  styleUserMarker();
-}
-// size the map to a centered SQUARE covering the viewport diagonal, so no rotation angle ever
-// exposes a blank corner (a tall, narrow phone needs ~the diagonal, not a fixed %).
-function sizeMapForCourseUp(el){
-  const W=(typeof innerWidth==='number'&&innerWidth)?innerWidth:375, H=(typeof innerHeight==='number'&&innerHeight)?innerHeight:800;
-  const side=Math.ceil(Math.sqrt(W*W+H*H))+6;
-  el.style.width=side+'px'; el.style.height=side+'px';
-  el.style.left=Math.round((W-side)/2)+'px'; el.style.top=Math.round((H-side)/2)+'px';
-  el.style.right='auto'; el.style.bottom='auto';
-}
-function clearMapSize(el){ ['width','height','left','top','right','bottom','transform'].forEach(k=>{ el.style[k]=''; }); }
-function setCourseUp(on){
-  state.courseUp = !!on;
-  const el = map.getContainer();
-  if(el && el.style){
-    if(state.nav && state.courseUp){ if(el.classList) el.classList.add('courseup'); sizeMapForCourseUp(el); }
-    else { if(el.classList) el.classList.remove('courseup'); clearMapSize(el); }
-  }
-  try{ map.invalidateSize({animate:false}); }catch(e){}
-  if(state.userPos && state.follow){ state.programmaticMove=true; map.panTo(state.userPos, {animate:false}); }
-  applyMapRotation();
-  const b=$('#compassBtn'); if(b && b.classList) b.classList.toggle('on', state.courseUp);
-}
-function onDeviceOrientation(e){
-  let h=null;
-  if(typeof e.webkitCompassHeading==='number' && !isNaN(e.webkitCompassHeading)) h=e.webkitCompassHeading;   // iOS: deg from north, CW
-  else if(e.absolute && typeof e.alpha==='number' && !isNaN(e.alpha)) h=(360 - e.alpha)%360;                 // Android absolute
-  if(h==null) return;
-  state.compassHeading=h;
-  if(state.nav && state.courseUp && state.heading==null) applyMapRotation();   // only drive rotation before GPS heading exists
-}
-async function enableOrientation(){
-  try{
-    const DOE = (typeof DeviceOrientationEvent!=='undefined') ? DeviceOrientationEvent : null;
-    if(DOE && typeof DOE.requestPermission==='function'){      // iOS 13+ needs a user-gesture grant
-      let res; try{ res = await DOE.requestPermission(); }catch(e){ res='denied'; }
-      if(res!=='granted') return;
-    }
-    if(typeof window!=='undefined' && window.addEventListener){
-      window.addEventListener('deviceorientationabsolute', onDeviceOrientation, true);
-      window.addEventListener('deviceorientation', onDeviceOrientation, true);
-    }
-  }catch(e){}
-}
-function disableOrientation(){
-  try{ window.removeEventListener('deviceorientationabsolute', onDeviceOrientation, true); window.removeEventListener('deviceorientation', onDeviceOrientation, true); }catch(e){}
-}
-
-function onPos(pos){
-  const lat=pos.coords.latitude, lon=pos.coords.longitude;
-  const prev = state.userPos;
-  state.userPos=[lat,lon];
-  // heading: prefer GPS course when actually moving, else infer from movement, else keep last
-  let hdg = state.heading;
-  const c = pos.coords;
-  if(typeof c.heading==='number' && !isNaN(c.heading) && (c.speed==null || c.speed>0.7)) hdg = c.heading;
-  else if(prev && haversine(prev,[lat,lon])>4) hdg = bearing(prev,[lat,lon]);
-  if(typeof hdg==='number' && !isNaN(hdg)) state.heading = hdg;
-  ensureUserMarker(lat,lon);
-  if(!state.nav){ return; }
-  const r=state.route;
-  const snap = snapToRoute([lat,lon], r);
-  // off-route?
-  if(snap.off > 45){ state.offCount++; if(state.offCount>=3 && !state.rerouting){ reroute(lat,lon); return; } }
-  else state.offCount=0;
-
-  if(state.follow){
-    state.programmaticMove=true;
-    // zoom in to the navigation zoom ONCE; after that only pan, so the user's own
-    // pinch-zoom (in or out) sticks even as they keep moving.
-    // Instant recentre (no pan/zoom animation). Animated follow can leave tiles blank when GPS
-    // updates arrive faster than the animation finishes — instant keeps the map solid.
-    state.navZoomed=true;
-    if(map.getZoom() < state.navZoom - 0.5) map.setView([lat,lon], state.navZoom, {animate:false});
-    else map.panTo([lat,lon], {animate:false});
-    if(state.courseUp) applyMapRotation();   // rotate so the travel direction points up
-  }
-  if(!state.follow) styleUserMarker();        // keep the arrow heading current even when not following
-
-  // find next maneuver (first with cum > along + 4m)
-  const along = snap.along;
-  let nextIdx = r.turns.findIndex(t=>t.cum > along + 4);
-  if(nextIdx<0) nextIdx = r.turns.length-1;
-  const t = r.turns[nextIdx];
-  const distTo = Math.max(0, t.cum - along);
-
-  // banner
-  $('#navArr').textContent = ARROWS[t.type]||'⬆';
-  $('#navIn').textContent = t.type==='arrive' ? '' : `In ${fmtD(distTo)}`;
-  $('#navMain').textContent = turnText(t, false);
-  $('#navName').textContent = (t.type!=='arrive' && t.name) ? (t.type==='depart'? '' : t.name) : '';
-  const then = r.turns[nextIdx+1];
-  if(then && distTo<400){ $('#navThen').style.display='flex'; $('#navThen').innerHTML = `<span>then</span> ${ARROWS[then.type]} ${esc(turnText(then,false))}`; }
-  else $('#navThen').style.display='none';
-
-  // ETA / remaining
-  const remain = Math.max(0, r.dist - along);
-  const remainTime = r.time * (r.dist>0? remain/r.dist : 0);
-  $('#navEta').textContent = etaClock(remainTime);
-  $('#navMeta').textContent = `${fmtD(remain)} · ${fmtT(remainTime)} left`;
-
-  // arrival
-  if(remain < 22){ speak('You have arrived at your destination.'); toast('You have arrived 🎉'); haptic([40,60,40]); stopNav(); return; }
-
-  // voice announcements per maneuver
-  announce(nextIdx, t, distTo);
-}
-
-function announce(idx, t, distTo){
-  const key = 'm'+idx;
-  const st = state.announced[key] || {};
-  const txt = turnText(t, true);
-  if(t.type==='arrive'){
-    if(distTo<120 && !st.near){ st.near=true; speak('Almost there. '+txt); }
-  } else {
-    if(distTo<=320 && distTo>140 && !st.far){ st.far=true; speak(`In ${fmtD(distTo)}, ${txt}.`); }
-    else if(distTo<=140 && distTo>45 && !st.mid){ st.mid=true; if(!st.far) speak(`In ${fmtD(distTo)}, ${txt}.`); }
-    else if(distTo<=45 && !st.now){ st.now=true; haptic(40); speak(txt + (t.name && t.type!=='uturn' ? '' : ' now')); }
-  }
-  state.announced[key]=st;
-}
-
-async function reroute(lat, lon){
-  state.rerouting=true; toast('Off route — recalculating…');
-  setPoint('from', {lat, lon, label:'Your location'});
-  try{
-    const g = await brouterRoute(state.route.profile, 0);
-    const r = parseRoute(g);
-    state.routes=[r]; state.activeAlt=0; state.routeLabels=tierLabels(1); state.route=r;
-    state.lastSnapIdx=0; state.announced={};
-    drawRoutes();
-    speak('Route updated.');
-  }catch(e){ toast('Reroute failed'); }
-  state.rerouting=false; state.offCount=0;
-}
-
-/* snap GPS to route polyline → {along (m from start), off (m), idx} */
-function snapToRoute(p, r){
-  const c=r.coords;
-  let lo=Math.max(0, state.lastSnapIdx-40), hi=Math.min(c.length-1, state.lastSnapIdx+120);
-  let best={off:Infinity, along:0, idx:lo};
-  const scan=(a,b)=>{
-    for(let i=a;i<b;i++){
-      const seg=projectToSeg(p, c[i], c[i+1]);
-      if(seg.dist<best.off){ best={off:seg.dist, along:r.cum[i]+seg.t*haversine(c[i],c[i+1]), idx:i}; }
-    }
-  };
-  scan(lo,hi);
-  if(best.off>60){ best={off:Infinity, along:0, idx:0}; scan(0, c.length-1); } // global fallback
-  state.lastSnapIdx=best.idx;
-  return best;
-}
-function projectToSeg(p, a, b){
-  // local equirectangular around a
-  const ref=toRad(a[0]);
-  const ax=0, ay=0;
-  const bx=(toRad(b[1])-toRad(a[1]))*Math.cos(ref)*R, by=(toRad(b[0])-toRad(a[0]))*R;
-  const px=(toRad(p[1])-toRad(a[1]))*Math.cos(ref)*R, py=(toRad(p[0])-toRad(a[0]))*R;
-  const dx=bx-ax, dy=by-ay, len2=dx*dx+dy*dy||1e-9;
-  let t=((px-ax)*dx+(py-ay)*dy)/len2; t=Math.max(0,Math.min(1,t));
-  const cx=ax+t*dx, cy=ay+t*dy;
-  return { t, dist:Math.hypot(px-cx, py-cy) };
-}
-
-/* voice */
-function speak(text){
-  if(!store.settings.voice) return;
-  if(!('speechSynthesis' in window)) return;
-  try{
-    const u=new SpeechSynthesisUtterance(text);
-    u.lang='en-GB'; u.rate=1.02; u.volume=1;
-    speechSynthesis.cancel(); speechSynthesis.speak(u);
-  }catch(e){}
-}
-function updateMuteBtn(){ const b=$('#muteBtn'); if(b){ const on=!!store.settings.voice; b.classList.toggle('off', !on); b.setAttribute('aria-pressed', on?'true':'false'); b.setAttribute('aria-label', on?'Voice on':'Voice off'); } }
 
 /* =========================================================
    POIs (Overpass)
    ========================================================= */
 async function loadPOIs(){
-  if(state.nav) return;
   const active = Object.entries(state.pois).filter(([,v])=>v).map(([k])=>k);
   poiLayer.clearLayers();
   if(!active.length) return;
@@ -1406,10 +1130,7 @@ async function loadPOIs(){
   }catch(e){ toast('Could not load points right now'); }
 }
 const loadPOIsDebounced = debounce(loadPOIs, 500);
-map.on('moveend', ()=>{
-  if(state.programmaticMove){ state.programmaticMove=false; return; }
-  if(Object.values(state.pois).some(Boolean)) loadPOIsDebounced();
-});
+map.on('moveend', ()=>{ if(Object.values(state.pois).some(Boolean)) loadPOIsDebounced(); });
 
 /* =========================================================
    SAVED PLACES & ROUTES
@@ -1549,8 +1270,7 @@ function positionFabs(){
   const fabs=$('#fabs'); if(!fabs || !fabs.style) return;
   if(!isMobile()){ fabs.style.bottom=''; return; }
   let visible=null;
-  if(state.nav){ const nb=$('#navbar'); if(nb && nb.classList.contains('on')){ const h=nb.offsetHeight; if(typeof h==='number' && h>0) visible=h; } }
-  else { const s=$('#sheet'); if(s && s.classList.contains('show')){ const H=s.offsetHeight; if(typeof H==='number' && isFinite(H)) visible=H-sheetY; } }
+  const s=$('#sheet'); if(s && s.classList.contains('show')){ const H=s.offsetHeight; if(typeof H==='number' && isFinite(H)) visible=H-sheetY; }
   if(typeof visible==='number' && isFinite(visible) && visible>0){
     const cap=(typeof innerHeight==='number'?innerHeight:800)*0.6;   // never crowd the top
     fabs.style.bottom = (Math.min(visible, cap) + 12) + 'px';
@@ -1681,14 +1401,6 @@ $('#locBtn').addEventListener('click', ()=>{
     ensureUserMarker(lat,lon); map.setView([lat,lon], 16);
   }, ()=>toast('Location unavailable — allow access & use HTTPS'), {enableHighAccuracy:true, timeout:10000});
 });
-$('#recenterBtn').addEventListener('click', ()=>{
-  state.follow=true; showRecenter(false); haptic(10);
-  if(state.userPos){ state.programmaticMove=true; map.setView(state.userPos, state.navZoom||Math.max(map.getZoom(),16), {animate:true}); }
-  if(state.nav && state.courseUp) applyMapRotation();
-});
-$('#compassBtn').addEventListener('click', ()=>{ haptic(10); setCourseUp(!state.courseUp);
-  toast(state.courseUp ? 'Course-up' : 'North-up'); });
-
 /* theme toggle (brand) */
 $('#themeBtn').addEventListener('click', ()=>{
   const cur = resolveTheme();
@@ -1715,11 +1427,6 @@ $$('.opt[data-poi]', pop).forEach(o=>o.addEventListener('click', ()=>{
 }));
 $$('.opt[data-cmp]', pop).forEach(o=>o.addEventListener('click', ()=>setRoadCompare(!state.showRoadRoute)));
 
-/* nav controls */
-$('#stopBtn').addEventListener('click', stopNav);
-$('#muteBtn').addEventListener('click', ()=>{ store.settings.voice=!store.settings.voice; saveStore(); updateMuteBtn();
-  if(store.settings.voice) speak('Voice on'); else { try{speechSynthesis.cancel();}catch(e){} } });
-
 /* drawer */
 const drawer=$('#drawer');
 function openDrawer(){ renderDrawer(); syncDrawerSettings(); drawer.classList.add('on'); }
@@ -1730,12 +1437,8 @@ drawer.addEventListener('click', e=>{ if(e.target===drawer) closeDrawer(); });
 
 function syncDrawerSettings(){
   $$('#themeSeg button').forEach(b=>b.dataset.on = b.dataset.themePref===(store.settings.theme||'auto')?'1':'0');
-  $('#voiceToggle').dataset.on = store.settings.voice?'1':'0';
-  $('#awakeToggle').dataset.on = store.settings.keepAwake?'1':'0';
 }
 $$('#themeSeg button').forEach(b=>b.addEventListener('click', ()=>{ store.settings.theme=b.dataset.themePref; saveStore(); applyTheme(); syncDrawerSettings(); }));
-$('#voiceToggle').addEventListener('click', ()=>{ store.settings.voice=!store.settings.voice; saveStore(); updateMuteBtn(); syncDrawerSettings(); });
-$('#awakeToggle').addEventListener('click', ()=>{ store.settings.keepAwake=!store.settings.keepAwake; saveStore(); syncDrawerSettings(); if(state.nav){ store.settings.keepAwake?requestWakeLock():releaseWakeLock(); } });
 
 /* keyboard: let role=button / role=switch divs/spans activate with Enter or Space */
 document.addEventListener('keydown', e=>{
@@ -1754,10 +1457,8 @@ function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('on
 if(typeof window!=='undefined' && window.addEventListener){
   window.addEventListener('resize', debounce(()=>{
     const s=$('#sheet');
-    if(!state.nav){
-      if(!isMobile()){ if(s){ s.style.transform=''; s.classList.toggle('show', !!state.route || !isMobile()); } }
-      else { if(state.route) showSheet(true, sheetMode); else showSheet(false); }
-    }
+    if(!isMobile()){ if(s){ s.style.transform=''; s.classList.toggle('show', !!state.route || !isMobile()); } }
+    else { if(state.route) showSheet(true, sheetMode); else showSheet(false); }
     positionFabs();
   }, 200));
 }
@@ -1775,7 +1476,6 @@ applyTheme();
 renderEmpty();
 renderViaFields();
 syncFindBtn();
-updateMuteBtn();
 
 /* PWA deep links / home-screen shortcuts: ?go=home|work  (e.g. "Navigate home") */
 try{

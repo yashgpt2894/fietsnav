@@ -5,7 +5,7 @@ Dutch node network (knooppunten)** — not along car roads. It's a single static
 (vanilla HTML/CSS/JS + Leaflet, no build step, no backend, no account), so it runs on your
 phone and your computer instantly.
 
-It does what `routeplanner.fietsersbond.nl` does, plus live turn-by-turn navigation.
+It does what `routeplanner.fietsersbond.nl` does, then hands the route to OsmAnd for turn-by-turn navigation.
 
 ## What it does
 
@@ -14,11 +14,9 @@ It does what `routeplanner.fietsersbond.nl` does, plus live turn-by-turn navigat
   dropping onto quiet country roads where no path exists
 - **Park discovery** — BRouter is blind to urban parks (`leisure=park`), so the app also finds big
   green areas near your route from OpenStreetMap and **dips the route through them** when the detour
-  is small. You get a **"Most scenic"** route (through the parks) plus the **"Direct"** scenic route
-- **Live navigation** — **course-up** (the map rotates so your direction of travel points up),
-  **zoomed in**, with a **heading arrow**; tap the compass to switch to north-up; pinch-zoom *sticks*
-  while you ride; spoken voice prompts, off-route rerouting, **screen stays awake**
-- **Navigate in OsmAnd** — one tap opens the route straight in **OsmAnd** on its bike profile for
+  is small. Routes are ranked by **measured green cover** into up to three tiers — **Scenic / More
+  scenic / Most scenic** — defaulting to the balanced "More scenic"
+- **Start in OsmAnd** — one tap opens the route straight in **OsmAnd** on its bike profile for
   turn-by-turn voice nav (a deep link carrying ~28 waypoints from our route, so OsmAnd traces it
   closely — Google Maps can't: its links cap at 3 waypoints); if OsmAnd isn't installed the link
   offers it. For a pixel-exact track, the **GPX export** button hands the full route to OsmAnd/Komoot
@@ -87,7 +85,6 @@ Full steps and the required location permissions are in **[NATIVE.md](NATIVE.md)
 
 1. Open the app in **Chrome** → press **F12** (⌥⌘I).
 2. Click the **device-toolbar** (📱) or press **⌃⇧M / Ctrl+Shift+M**, pick **iPhone**/**Pixel**.
-3. Simulate GPS via *⋮ → More tools → Sensors → Location* to watch navigation run.
 
 ## Develop / test
 
@@ -102,7 +99,7 @@ npm run check    # syntax check + tests
 | File | Purpose |
 |------|---------|
 | `index.html` | App shell, design system (light + dark), layout |
-| `app.js` | Map, search, routing, course-up navigation, elevation, POIs, saved places, theme, bottom sheet |
+| `app.js` | Map, search, scenic routing + green-cover tiers, OsmAnd hand-off, elevation, POIs, saved places, theme, bottom sheet |
 | `scenic.brf` | BRouter routing profile — prefers cycle paths/tracks through parks, forest & water (uploaded to BRouter on first use, then cached) |
 | `manifest.webmanifest` | Makes it installable (name, icons, shortcuts, colours) |
 | `sw.js` | Service worker — offline app shell + capped map-tile cache |
@@ -113,6 +110,6 @@ npm run check    # syntax check + tests
 ## Credits & data
 
 Routing & scenic/shortest profiles **BRouter** · Search **Photon (Komoot)** ·
-Points **Overpass API** · Maps **CyclOSM / CARTO / waymarkedtrails** · Map rotation **leaflet-rotate** ·
+Points **Overpass API** · Maps **CyclOSM / CARTO / waymarkedtrails** ·
 Map data **© OpenStreetMap contributors**. All free, public services — please use gently.
 Built for personal use.
