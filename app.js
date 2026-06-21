@@ -53,7 +53,8 @@ const state = {
   routing:false,                         // a route is currently being computed (find button → spinner)
   userPos:null, userMarker:null, userAcc:null, heading:null,
   announced:{}, follow:true, programmaticMove:false,
-  navZoom:17, navZoomed:false,   // navigation view: zoomed-in, follows the rider (north-up)
+  navZoom:17, navZoomed:false,   // navigation view: zoomed-in, follows the rider
+  courseUp:true, compassHeading:null,   // course-up rotates the map so travel direction is up
   pois:{ nodes:false, parking:false, ferry:false, station:false },
   overlays:{ cycleroutes:false },
   compare:null, showRoadRoute:false,
@@ -1013,9 +1014,13 @@ function renderSummary(){
       </div>
       ${elevCard(r)}
       ${compareCard(r)}
+      <button class="gmaps osmand" id="osmandBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M16 8l-2.5 6.5L8 16l2.5-6.5z" fill="currentColor" stroke="none"/></svg>
+        Navigate in OsmAnd <span class="gm-note">· follows this exact route</span>
+      </button>
       <a class="gmaps" id="gmapsBtn" href="${esc(googleMapsUrl()||'#')}" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>
-        Open route in Google Maps
+        Open in Google Maps <span class="gm-note">· approximate</span>
       </a>
     </div>
     <div class="turns">
@@ -1027,6 +1032,7 @@ function renderSummary(){
   $('#goBtn').addEventListener('click', startNav);
   $('#saveRouteBtn').addEventListener('click', saveCurrentRoute);
   $('#gpxBtn').addEventListener('click', exportGPX);
+  const os=$('#osmandBtn'); if(os) os.addEventListener('click', openInOsmAnd);
   const gm=$('#gmapsBtn'); if(gm) gm.addEventListener('click', ()=>haptic(10));   // href does the navigation; just a tap buzz
   const ct=$('#cmpToggle'); if(ct) ct.addEventListener('click', ()=>setRoadCompare(!state.showRoadRoute));
   $$('.altbtn').forEach(b=>b.addEventListener('click', ()=>{ state.activeAlt=parseInt(b.dataset.alt); state.route=state.routes[state.activeAlt]; drawRoutes(); renderSummary(); }));
@@ -1092,23 +1098,53 @@ function googleMapsUrl(){
   return u;
 }
 
-/* ---- GPX export ---- */
-function exportGPX(){
-  const r = state.route; if(!r) return;
+/* ---- GPX (export + hand off to OsmAnd, which follows the EXACT track) ---- */
+function buildGPX(){
+  const r = state.route; if(!r) return null;
   const name = `${shortLabel(state.from&&state.from.label)} to ${shortLabel(state.to&&state.to.label)}`.trim() || 'FietsNav route';
-  const head = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="FietsNav" xmlns="http://www.topografix.com/GPX/1/1">\n<metadata><name>${esc(name)}</name></metadata>\n<trk><name>${esc(name)}</name><trkseg>\n`;
-  let pts='';
-  r.coords.forEach(c=>{ pts += `<trkpt lat="${c[0].toFixed(6)}" lon="${c[1].toFixed(6)}"></trkpt>\n`; });
-  const gpx = head + pts + `</trkseg></trk>\n</gpx>\n`;
+  // a <rte> (route, with the shape points) + a <trk> (track): OsmAnd's "Navigate by Track" follows
+  // the trkseg verbatim; the rte helps apps that prefer route semantics.
+  let trk=''; r.coords.forEach(c=>{ trk += `<trkpt lat="${c[0].toFixed(6)}" lon="${c[1].toFixed(6)}"></trkpt>\n`; });
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n`+
+    `<gpx version="1.1" creator="FietsNav" xmlns="http://www.topografix.com/GPX/1/1">\n`+
+    `<metadata><name>${esc(name)}</name></metadata>\n`+
+    `<trk><name>${esc(name)}</name><trkseg>\n${trk}</trkseg></trk>\n</gpx>\n`;
+  const filename = (name.replace(/[^\w\- ]+/g,'').replace(/\s+/g,'_')||'route') + '.gpx';
+  return { name, gpx, filename };
+}
+function downloadFile(content, type, filename){
+  const blob = new Blob([content], {type});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+function exportGPX(){
+  const g = buildGPX(); if(!g){ return; }
+  try{ downloadFile(g.gpx, 'application/gpx+xml', g.filename); toast('GPX exported ⬇'); haptic(20); }
+  catch(e){ toast('Could not export GPX'); }
+}
+/* Hand the exact route to OsmAnd: prefer the native share sheet with the .gpx file (best on iOS,
+   one tap to "Copy to OsmAnd"); otherwise download the file and tell the user how to import it.
+   OsmAnd's "Navigate by Track" then follows OUR polyline verbatim with voice. */
+async function openInOsmAnd(){
+  const g = buildGPX(); if(!g) return;
+  haptic(10);
   try{
-    const blob = new Blob([gpx], {type:'application/gpx+xml'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = (name.replace(/[^\w\- ]+/g,'').replace(/\s+/g,'_')||'route') + '.gpx';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 4000);
-    toast('GPX exported ⬇'); haptic(20);
-  }catch(e){ toast('Could not export GPX'); }
+    if(navigator.canShare && typeof File!=='undefined'){
+      const file = new File([g.gpx], g.filename, {type:'application/gpx+xml'});
+      if(navigator.canShare({files:[file]})){
+        await navigator.share({files:[file], title:g.name, text:'Open in OsmAnd → Navigate by Track'});
+        toast('In OsmAnd: ⋮ → Navigate by Track');
+        return;
+      }
+    }
+  }catch(e){ if(e && e.name==='AbortError') return; /* fall through to download */ }
+  try{
+    downloadFile(g.gpx, 'application/gpx+xml', g.filename);
+    toast('Saved .gpx — open it in OsmAnd → Plan a route → Navigate by Track');
+  }catch(e){ toast('Could not create the GPX file'); }
 }
 
 /* =========================================================
@@ -1130,17 +1166,20 @@ function startNav(){
   if(!state.route){ return; }
   if(!('geolocation' in navigator)){ toast('No GPS on this device'); return; }
   state.nav = true; state.lastSnapIdx = 0; state.offCount=0; state.announced={}; state.follow=true;
-  state.navZoom = 17; state.navZoomed = false;
+  state.navZoom = 17; state.navZoomed = false; state.courseUp = true;
   $('#nav').classList.add('on'); $('#navbar').classList.add('on');
   $('#search').style.display='none';
   showSheet(false);
   $('#layersBtn').classList.add('hide'); $('#locBtn').classList.add('hide');
+  $('#compassBtn').classList.remove('hide');
   document.body.classList.add('navmode');
   updateMuteBtn();
   requestWakeLock();
+  enableOrientation();                 // this tap also grants iOS compass permission + unlocks speech
   haptic(30);
-  // zoom straight in to the nav view if we already have a position
-  if(state.userPos){ state.programmaticMove=true; state.navZoomed=true; map.setView(state.userPos, state.navZoom, {animate:false}); styleUserMarker(); }
+  // zoom straight in to the nav view if we already have a position, then turn on course-up
+  if(state.userPos){ state.programmaticMove=true; state.navZoomed=true; map.setView(state.userPos, state.navZoom, {animate:false}); }
+  setCourseUp(true);
   speak('Starting navigation. ' + turnText(state.route.turns[0]));
   state.watchId = navigator.geolocation.watchPosition(onPos, e=>toast('GPS lost — '+e.message),
     {enableHighAccuracy:true, maximumAge:1000, timeout:15000});
@@ -1148,10 +1187,16 @@ function startNav(){
 function stopNav(){
   state.nav=false; state.follow=true; state.navZoomed=false;
   if(state.watchId!=null){ navigator.geolocation.clearWatch(state.watchId); state.watchId=null; }
+  disableOrientation();
+  // undo course-up: clear rotation + the oversized map, then resize back
+  const mapEl = map.getContainer();
+  if(mapEl){ if(mapEl.classList) mapEl.classList.remove('courseup'); if(mapEl.style) clearMapSize(mapEl); }
+  try{ map.invalidateSize({animate:false}); }catch(e){}
   $('#nav').classList.remove('on'); $('#navbar').classList.remove('on');
   $('#navThen').style.display='none';
   $('#search').style.display='';
   $('#layersBtn').classList.remove('hide'); $('#locBtn').classList.remove('hide');
+  $('#compassBtn').classList.add('hide');
   showRecenter(false);
   styleUserMarker();              // arrow puck → plain dot
   document.body.classList.remove('navmode');
@@ -1170,16 +1215,78 @@ function ensureUserMarker(lat, lon){
   } else state.userMarker.setLatLng([lat,lon]);
   styleUserMarker();
 }
-/* the heading arrow points along the true compass heading (north-up map) */
+// the heading we orient by: GPS travel direction when we have it (stable while riding),
+// else the device compass (good before the first move / when stationary).
+function currentHeading(){
+  if(typeof state.heading==='number' && !isNaN(state.heading)) return state.heading;
+  if(typeof state.compassHeading==='number' && !isNaN(state.compassHeading)) return state.compassHeading;
+  return 0;
+}
 function styleUserMarker(){
   const m = state.userMarker; if(!m || !m.getElement) return;
   const el = m.getElement(); if(!el || !el.querySelector) return;
   const wrap = el.querySelector('.userwrap'); if(wrap && wrap.classList) wrap.classList.toggle('nav', !!state.nav);
   const arr = el.querySelector('.navarrow');
   if(arr && arr.style){
-    const ang = (state.heading==null) ? 0 : state.heading;
+    // course-up: the map is rotated by -heading, so rotate the arrow by +heading → it points UP.
+    // north-up: rotate the arrow to the travel direction.
+    const ang = (state.nav && state.courseUp) ? currentHeading() : (state.heading==null ? 0 : state.heading);
     arr.style.transform = 'rotate('+ang.toFixed(1)+'deg)';
   }
+}
+// course-up: rotate the WHOLE map (CSS transform on the Leaflet container, oversized so the
+// rotated corners stay filled). No plugin — leaflet-rotate previously pushed the map off-screen.
+function applyMapRotation(){
+  const el = map.getContainer(); if(!el || !el.style) return;
+  if(state.nav && state.courseUp){ el.style.transform = 'rotate('+(-currentHeading()).toFixed(1)+'deg)'; }
+  else { el.style.transform = ''; }
+  styleUserMarker();
+}
+// size the map to a centered SQUARE covering the viewport diagonal, so no rotation angle ever
+// exposes a blank corner (a tall, narrow phone needs ~the diagonal, not a fixed %).
+function sizeMapForCourseUp(el){
+  const W=(typeof innerWidth==='number'&&innerWidth)?innerWidth:375, H=(typeof innerHeight==='number'&&innerHeight)?innerHeight:800;
+  const side=Math.ceil(Math.sqrt(W*W+H*H))+6;
+  el.style.width=side+'px'; el.style.height=side+'px';
+  el.style.left=Math.round((W-side)/2)+'px'; el.style.top=Math.round((H-side)/2)+'px';
+  el.style.right='auto'; el.style.bottom='auto';
+}
+function clearMapSize(el){ ['width','height','left','top','right','bottom','transform'].forEach(k=>{ el.style[k]=''; }); }
+function setCourseUp(on){
+  state.courseUp = !!on;
+  const el = map.getContainer();
+  if(el && el.style){
+    if(state.nav && state.courseUp){ if(el.classList) el.classList.add('courseup'); sizeMapForCourseUp(el); }
+    else { if(el.classList) el.classList.remove('courseup'); clearMapSize(el); }
+  }
+  try{ map.invalidateSize({animate:false}); }catch(e){}
+  if(state.userPos && state.follow){ state.programmaticMove=true; map.panTo(state.userPos, {animate:false}); }
+  applyMapRotation();
+  const b=$('#compassBtn'); if(b && b.classList) b.classList.toggle('on', state.courseUp);
+}
+function onDeviceOrientation(e){
+  let h=null;
+  if(typeof e.webkitCompassHeading==='number' && !isNaN(e.webkitCompassHeading)) h=e.webkitCompassHeading;   // iOS: deg from north, CW
+  else if(e.absolute && typeof e.alpha==='number' && !isNaN(e.alpha)) h=(360 - e.alpha)%360;                 // Android absolute
+  if(h==null) return;
+  state.compassHeading=h;
+  if(state.nav && state.courseUp && state.heading==null) applyMapRotation();   // only drive rotation before GPS heading exists
+}
+async function enableOrientation(){
+  try{
+    const DOE = (typeof DeviceOrientationEvent!=='undefined') ? DeviceOrientationEvent : null;
+    if(DOE && typeof DOE.requestPermission==='function'){      // iOS 13+ needs a user-gesture grant
+      let res; try{ res = await DOE.requestPermission(); }catch(e){ res='denied'; }
+      if(res!=='granted') return;
+    }
+    if(typeof window!=='undefined' && window.addEventListener){
+      window.addEventListener('deviceorientationabsolute', onDeviceOrientation, true);
+      window.addEventListener('deviceorientation', onDeviceOrientation, true);
+    }
+  }catch(e){}
+}
+function disableOrientation(){
+  try{ window.removeEventListener('deviceorientationabsolute', onDeviceOrientation, true); window.removeEventListener('deviceorientation', onDeviceOrientation, true); }catch(e){}
 }
 
 function onPos(pos){
@@ -1209,7 +1316,9 @@ function onPos(pos){
     state.navZoomed=true;
     if(map.getZoom() < state.navZoom - 0.5) map.setView([lat,lon], state.navZoom, {animate:false});
     else map.panTo([lat,lon], {animate:false});
+    if(state.courseUp) applyMapRotation();   // rotate so the travel direction points up
   }
+  if(!state.follow) styleUserMarker();        // keep the arrow heading current even when not following
 
   // find next maneuver (first with cum > along + 4m)
   const along = snap.along;
@@ -1624,7 +1733,10 @@ $('#locBtn').addEventListener('click', ()=>{
 $('#recenterBtn').addEventListener('click', ()=>{
   state.follow=true; showRecenter(false); haptic(10);
   if(state.userPos){ state.programmaticMove=true; map.setView(state.userPos, state.navZoom||Math.max(map.getZoom(),16), {animate:true}); }
+  if(state.nav && state.courseUp) applyMapRotation();
 });
+$('#compassBtn').addEventListener('click', ()=>{ haptic(10); setCourseUp(!state.courseUp);
+  toast(state.courseUp ? 'Course-up' : 'North-up'); });
 
 /* theme toggle (brand) */
 $('#themeBtn').addEventListener('click', ()=>{

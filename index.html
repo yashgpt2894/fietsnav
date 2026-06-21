@@ -77,7 +77,9 @@
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     color:var(--ink);background:var(--bg);
     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-  #map{position:absolute;inset:0;z-index:0;background:var(--bg)}
+  #map{position:absolute;inset:0;z-index:0;background:var(--bg);transform-origin:50% 50%;transition:transform .3s ease-out}
+  /* course-up: JS sizes #map to a centered square covering the viewport diagonal so the rotated
+     corners stay filled; body's overflow:hidden clips the excess. */
   [data-theme="dark"] .leaflet-tile{filter:none}
   .leaflet-control-attribution{font-size:10px;background:var(--glass);color:var(--muted);
     -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border-radius:6px 0 0 0}
@@ -442,6 +444,12 @@
   .gmaps:hover{border-color:var(--quiet);color:var(--quiet)}
   .gmaps:active{transform:scale(.99)}
   .gmaps svg{width:18px;height:18px;flex:none}
+  .gmaps .gm-note{font-weight:600;color:var(--muted);font-size:12.5px}
+  /* OsmAnd handoff = the recommended way to navigate our exact route → accented */
+  .gmaps.osmand{margin-bottom:8px;color:var(--accent-d);border-color:color-mix(in srgb,var(--accent) 45%,transparent);
+    background:var(--accent-l)}
+  .gmaps.osmand .gm-note{color:var(--accent-d);opacity:.8}
+  .gmaps.osmand:hover{border-color:var(--accent)}
   .leaflet-popup-content-wrapper{background:var(--surface);color:var(--ink);border-radius:12px}
   .leaflet-popup-tip{background:var(--surface)}
 
@@ -515,6 +523,9 @@
 
 <!-- floating controls -->
 <div id="fabs">
+  <button class="fab hide" id="compassBtn" title="Course-up / north-up" aria-label="Toggle course-up">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l4 9-4-2-4 2 4-9z" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9.5"/></svg>
+  </button>
   <button class="fab hide" id="recenterBtn" title="Re-center" aria-label="Re-center on my location">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="4"/></svg>
   </button>
