@@ -1392,6 +1392,15 @@ function peekTarget(){
   if(show>cap) show=cap;
   return Math.max(0, total-show);
 }
+/* minimized ("completely down"): slide the sheet off-screen except its grab handle,
+   so the map is fully visible but you can still pull the route back up. */
+function minTarget(){
+  const s=$('#sheet'); if(!s) return 0;
+  const total=s.offsetHeight||0;
+  const grab=$('#grab');
+  const h=(grab && typeof grab.offsetHeight==='number') ? grab.offsetHeight : 32;
+  return Math.max(0, total-h);
+}
 /* Tallest the sheet may be on mobile: it must stop just below the search card so that, when
    expanded to "full", its grab handle + top content never hide behind the from/to inputs
    (which sit above it at a higher z-index). Without this the handle is unreachable → the
@@ -1409,8 +1418,10 @@ function setSheetMode(mode){
   sheetMode=mode;
   s.style.maxHeight = sheetCap()+'px';          // keep "full" below the search card
   if(mode==='full') applySheetY(0);
+  else if(mode==='min') applySheetY(minTarget());
   else applySheetY(peekTarget());
-  s.classList.toggle('full', mode==='full');    // flips the handle chevron (▲ peek → expand, ▼ full → collapse)
+  s.classList.toggle('full', mode==='full');    // flips the handle chevron (▲ expand, ▼ collapse)
+  s.classList.toggle('min', mode==='min');
   const g=$('#grab'); if(g && g.setAttribute) g.setAttribute('aria-expanded', mode==='full'?'true':'false');
 }
 function showSheet(on, mode){
@@ -1427,22 +1438,31 @@ function wireSheetDrag(){
   const down = e=>{
     if(!isMobile()) return;
     const y = (e.touches?e.touches[0].clientY:e.clientY);
-    drag={startY:y, base:sheetY, moved:false}; const s=$('#sheet'); if(s) s.classList.add('dragging');
+    drag={startY:y, base:sheetY, moved:false, maxY:minTarget()}; const s=$('#sheet'); if(s) s.classList.add('dragging');
     if(grab.setPointerCapture && e.pointerId!=null){ try{grab.setPointerCapture(e.pointerId);}catch(_){} }
   };
   const move = e=>{
     if(!drag) return;
     const y=(e.touches?e.touches[0].clientY:e.clientY);
     if(Math.abs(y-drag.startY)>6) drag.moved=true;
-    let ny=Math.max(0, drag.base+(y-drag.startY));
+    // clamp between full (0) and minimized so the handle always stays on screen
+    let ny=Math.max(0, Math.min(drag.maxY, drag.base+(y-drag.startY)));
     applySheetY(ny);
     if(e.cancelable) e.preventDefault();
   };
   const up = ()=>{
     if(!drag) return;
     const s=$('#sheet'); if(s) s.classList.remove('dragging');
-    if(!drag.moved){ setSheetMode(sheetMode==='full' ? 'peek' : 'full'); }   // a tap on the handle toggles peek/full
-    else { const peak=peekTarget(); const mid=peak/2; setSheetMode(sheetY<mid ? 'full' : 'peek'); }
+    if(!drag.moved){
+      // tap the handle: the chevron always points where this goes — min↑peek, peek↑full, full↓peek
+      setSheetMode(sheetMode==='min' ? 'peek' : (sheetMode==='full' ? 'peek' : 'full'));
+    } else {
+      // released a drag: snap to whichever detent (full / peek / minimized) is nearest
+      const detents=[['full',0],['peek',peekTarget()],['min',minTarget()]];
+      let best='peek', bd=Infinity;
+      for(const [m,ty] of detents){ const d=Math.abs(sheetY-ty); if(d<bd){ bd=d; best=m; } }
+      setSheetMode(best);
+    }
     drag=null;
   };
   grab.addEventListener('pointerdown', down);
