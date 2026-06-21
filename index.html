@@ -141,6 +141,11 @@
   .field .clr{color:var(--muted);font-size:15px;width:32px;height:32px;border-radius:50%;display:none;place-items:center;flex:none}
   .field .clr:hover{background:var(--surface-3);color:var(--ink)}
   .field input:not(:placeholder-shown) ~ .clr{display:grid}
+  /* one-tap "use my current location" — shown on the empty Start field (swaps with the clear ✕) */
+  .field .usemine{color:var(--accent);width:32px;height:32px;border-radius:50%;display:none;place-items:center;flex:none}
+  .field .usemine:hover{background:var(--accent-l)}
+  .field .usemine svg{width:18px;height:18px}
+  .field[data-role="from"] input:placeholder-shown ~ .usemine{display:grid}
 
   .swap{position:absolute;right:12px;top:34px;z-index:3;width:34px;height:34px;border-radius:50%;
     background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;color:var(--muted);
@@ -464,6 +469,9 @@
       <div class="field" data-role="from">
         <span class="dot from"></span>
         <input type="text" id="inFrom" placeholder="Choose start — or your location" autocomplete="off" />
+        <button class="usemine" id="useMineBtn" tabindex="-1" title="Use my current location" aria-label="Use my current location">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        </button>
         <button class="clr" tabindex="-1" aria-label="Clear">✕</button>
         <div class="ac" data-for="from"></div>
       </div>

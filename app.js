@@ -933,7 +933,7 @@ function renderTurnList(r){
    destination to Google Maps cycling directions so you can use it when you prefer. */
 /* choose up to maxN waypoints to pin Google to our route: the route's significant turns
    (Ramer–Douglas–Peucker) plus evenly-spaced fillers to cover the long gaps, then trimmed to
-   maxN in route order. Google caps URLs at 9 waypoints, so this can only approximate. */
+   maxN in route order. maxN is kept tiny (≤3) for the Google Maps app — see googleMapsUrl(). */
 function shapeWaypoints(coords, maxN){
   const n=coords.length; if(n<=2) return [];
   let eps=120, keep=rdpKeep(coords, eps);
@@ -944,16 +944,37 @@ function shapeWaypoints(coords, maxN){
   if(arr.length>maxN){ const out=[],step=arr.length/maxN; for(let k=0;k<maxN;k++) out.push(arr[Math.round(k*step)]); arr=out; }
   return arr.map(i=>coords[i]);
 }
+// The Google Maps app accepts at most 3 intermediate waypoints in a dir/?api=1 link (the "9"
+// limit is desktop-only); handing it more makes the mobile app reject/crash on the link. And
+// Maps re-snaps each waypoint to roads and recomputes the leg between them anyway — so a few
+// well-spaced points trace OUR path better than many clustered ones. So: keep the user's real
+// stops if any (capped at 3); otherwise nudge fidelity with up to 3 well-spaced shape points.
+const GMAPS_MAX_WP = 3;
+const GMAPS_MIN_GAP = 200;   // m — drop shape points clustered closer than this (Maps re-routes
+                             // between waypoints anyway; clustered points only add snap ambiguity)
+// up to GMAPS_MAX_WP shape points, each ≥GMAPS_MIN_GAP from the endpoints and each other; may be empty
+function spacedShapeWaypoints(coords){
+  const cand = shapeWaypoints(coords, GMAPS_MAX_WP + 2);   // over-pick, then space-filter down
+  const ends = [coords[0], coords[coords.length-1]];
+  const kept = [];
+  for(const p of cand){
+    if(kept.length >= GMAPS_MAX_WP) break;
+    if([...ends, ...kept].every(q => haversine(p, q) >= GMAPS_MIN_GAP)) kept.push(p);
+  }
+  return kept;
+}
 function googleMapsUrl(){
   if(!state.from || !state.to) return null;
   const f = (lat,lon) => `${(+lat).toFixed(5)},${(+lon).toFixed(5)}`;
   let u = `https://www.google.com/maps/dir/?api=1&origin=${f(state.from.lat,state.from.lon)}&destination=${f(state.to.lat,state.to.lon)}&travelmode=bicycling`;
-  // Pin Google to OUR route's key turns (Google's URL allows at most 9 waypoints; >9 errors).
+  const vias = state.vias.filter(Boolean).map(v=>[v.lat,v.lon]);
   const r = state.route;
-  let wps = (r && r.coords && r.coords.length>2)
-    ? shapeWaypoints(r.coords, 9).map(p=>f(p[0],p[1]))
-    : state.vias.filter(Boolean).map(v=>f(v.lat,v.lon));
-  if(wps.length) u += `&waypoints=${encodeURIComponent(wps.join('|'))}`;
+  let pts;
+  if(vias.length) pts = vias.slice(0, GMAPS_MAX_WP);                          // real stops matter most
+  else if(r && r.coords && r.coords.length>2) pts = spacedShapeWaypoints(r.coords);  // else a few well-spaced hints
+  else pts = [];
+  const wps = pts.map(p=>f(p[0],p[1]));
+  if(wps.length) u += `&waypoints=${encodeURIComponent(wps.join('|'))}`;      // omit entirely when none survive
   return u;
 }
 
@@ -1448,6 +1469,9 @@ $('#findBtn').addEventListener('click', ()=>{
   if(state.routing || !state.from || !state.to) return;
   haptic(10); computeRoute();
 });
+
+/* one-tap: set the start to my current location */
+$('#useMineBtn').addEventListener('click', ()=>{ haptic(10); useMyLocationFor('from'); });
 
 /* locate */
 $('#locBtn').addEventListener('click', ()=>{
