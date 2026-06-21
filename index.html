@@ -211,8 +211,13 @@
       transition:transform .4s var(--ease);display:flex;flex-direction:column;
       max-height:calc(92% - var(--safe-t));will-change:transform}
     #sheet.show{transform:translateY(0)}
-    #sheet .grab{display:block;height:26px;flex:none;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
-    #sheet .grab::before{content:"";width:38px;height:5px;border-radius:3px;background:var(--line)}
+    /* handle: a drag pill + a chevron that flips to show which way a tap goes (up to expand, down to collapse) */
+    #sheet .grab{height:32px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      gap:3px;cursor:grab;touch-action:none;color:var(--muted)}
+    #sheet .grab .pill{width:38px;height:5px;border-radius:3px;background:var(--line)}
+    #sheet .grab .chev{width:18px;height:18px;transition:transform .25s var(--ease)}
+    #sheet.full .grab .chev{transform:rotate(180deg)}
+    #sheet .grab:active{color:var(--ink-2)}
     #results{overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(8px + var(--safe-b))}
     #sheet.dragging{transition:none}
   }
@@ -496,7 +501,10 @@
   </div>
 
   <div id="sheet">
-    <div class="grab" id="grab" aria-hidden="true"></div>
+    <div class="grab" id="grab" role="button" tabindex="0" aria-label="Expand or collapse the route panel" aria-expanded="false">
+      <span class="pill" aria-hidden="true"></span>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg>
+    </div>
     <div id="results"></div>
   </div>
 </div>

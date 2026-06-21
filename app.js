@@ -1410,6 +1410,8 @@ function setSheetMode(mode){
   s.style.maxHeight = sheetCap()+'px';          // keep "full" below the search card
   if(mode==='full') applySheetY(0);
   else applySheetY(peekTarget());
+  s.classList.toggle('full', mode==='full');    // flips the handle chevron (▲ peek → expand, ▼ full → collapse)
+  const g=$('#grab'); if(g && g.setAttribute) g.setAttribute('aria-expanded', mode==='full'?'true':'false');
 }
 function showSheet(on, mode){
   const s=$('#sheet'); if(!s) return;
@@ -1451,6 +1453,10 @@ function wireSheetDrag(){
   grab.addEventListener('touchstart', down, {passive:true});
   grab.addEventListener('touchmove', move, {passive:false});
   grab.addEventListener('touchend', up);
+  // keyboard: Enter/Space on the focused handle toggles up/down (no click handler, so no tap double-fire)
+  grab.addEventListener('keydown', e=>{
+    if(e.key==='Enter' || e.key===' ' || e.key==='Spacebar'){ e.preventDefault(); e.stopPropagation(); setSheetMode(sheetMode==='full' ? 'peek' : 'full'); }
+  });
 }
 
 /* =========================================================
