@@ -50,6 +50,7 @@ const state = {
   routes:[], activeAlt:0,                 // parsed route objects
   route:null,
   nav:false, watchId:null, lastSnapIdx:0, offCount:0, rerouting:false,
+  routing:false,                         // a route is currently being computed (find button → spinner)
   userPos:null, userMarker:null, userAcc:null, heading:null,
   announced:{}, follow:true, programmaticMove:false,
   navZoom:17, navZoomed:false,   // navigation view: zoomed-in, follows the rider (north-up)
@@ -277,6 +278,9 @@ function renderViaFields(){
     wireField($(`#via-${i}`, div), i);
     div.querySelector('.clr').addEventListener('click', ()=>{ state.vias.splice(i,1); renderViaFields(); drawEndpoints(); maybeRoute(); });
   });
+  syncFindBtn();   // stop-count changed → refresh the CTA label
+  // search card height changed while a route sheet is open → keep "full" below the card
+  const s=$('#sheet'); if(state.route && isMobile() && s && s.classList && s.classList.contains('show')) setSheetMode(sheetMode);
 }
 
 /* map click → set point via popup */
@@ -663,19 +667,36 @@ function turnText(t, withName=true){
 /* ---- orchestration ---- */
 let routeReqId = 0;
 let routeAbort = null;
+/* Endpoints/vias changed. We DON'T route automatically — the user presses "Find route".
+   So here we just drop any now-stale route, refresh the Find button, and update the panel. */
 function maybeRoute(){
-  if(state.from && state.to){ computeRoute(); }
+  if(state.routes.length) clearRoute();
+  syncChips(); syncFindBtn();
+  if(state.from && state.to) renderReady();
+  else renderEmpty();
 }
-function refreshRouteOrClear(){
-  syncChips();
-  if(state.from && state.to) computeRoute();
-  else { clearRoute(); renderEmpty(); }
-}
+function refreshRouteOrClear(){ maybeRoute(); }
 function clearRoute(){ routeLayer.clearLayers(); state.routes=[]; state.route=null; state.compare=null; }
+
+/* Show/label the "Find route" CTA: visible only when both ends are set and we have no route yet. */
+function syncFindBtn(){
+  const b=$('#findBtn'); if(!b) return;
+  const txt=$('#findBtnTxt');
+  if(state.routing){
+    b.classList.remove('hide'); b.setAttribute('disabled','');
+    if(txt) txt.textContent='Finding the greenest route…';
+    return;
+  }
+  b.removeAttribute('disabled');
+  if(txt) txt.textContent = state.vias.filter(Boolean).length ? 'Find scenic route via stops' : 'Find scenic route';
+  const show = !!(state.from && state.to) && !state.routes.length;
+  b.classList.toggle('hide', !show);
+}
 
 async function computeRoute(){
   if(!state.from || !state.to) return;
   const myId = ++routeReqId;
+  state.routing = true; syncFindBtn();
   try{ if(routeAbort) routeAbort.abort(); }catch(e){}
   let sig; try{ routeAbort = new AbortController(); sig = routeAbort.signal; }catch(e){ routeAbort=null; }
   renderLoading();
@@ -709,6 +730,7 @@ async function computeRoute(){
 
   state.routes = pr ? [pr, r] : [r];
   state.activeAlt = 0; state.route = state.routes[0]; state.compare = null;
+  state.routing = false; syncFindBtn();
   drawRoutes(); fitRoute(); renderSummary();
 
   // apply the distance comparison once it's ready
@@ -753,9 +775,15 @@ function fitRoute(){
 const results = $('#results');
 function renderEmpty(){
   results.innerHTML = `<div class="hint"><span class="big">🌳</span>
-    Set a start and destination to get the <b>top 3 most scenic</b> bike routes — through parks, forests and along the water.<br><br>
+    Set a start and destination to get the <b>most scenic</b> bike route — through parks, forests and along the water.<br><br>
     Tip: tap the map to drop a point, or open the menu to save Home &amp; Work.</div>`;
   showSheet(!isMobile());
+}
+/* both ends set, route not computed yet — prompt the user to press Find (no auto-routing) */
+function renderReady(){
+  results.innerHTML = `<div class="hint"><span class="big">🚲</span>
+    Ready to plan.<br>Tap <b>Find scenic route</b> to map the greenest way there.</div>`;
+  showSheet(!isMobile());   // desktop shows the prompt; on mobile the sheet waits for Find
 }
 function renderLoading(){
   results.innerHTML = `<div class="summary"><div class="sumtop"><span class="time">Finding scenic route…</span></div>
@@ -764,6 +792,7 @@ function renderLoading(){
   showSheet(true, 'peek');
 }
 function renderError(msg){
+  state.routing = false; syncFindBtn();
   results.innerHTML = `<div class="hint"><span class="big">⚠️</span>Couldn't find a route.<br>${esc(msg||'')}<br><br>Try moving a point onto a road or path.</div>`;
   showSheet(true, 'peek');
 }
@@ -1342,9 +1371,22 @@ function peekTarget(){
   if(show>cap) show=cap;
   return Math.max(0, total-show);
 }
+/* Tallest the sheet may be on mobile: it must stop just below the search card so that, when
+   expanded to "full", its grab handle + top content never hide behind the from/to inputs
+   (which sit above it at a higher z-index). Without this the handle is unreachable → the
+   sheet can't be tapped/dragged back down. */
+function sheetCap(){
+  const vh = (typeof innerHeight==='number' && isFinite(innerHeight)) ? innerHeight : 800;
+  let top = 8;
+  const sc=$('#search');
+  if(sc && sc.getBoundingClientRect){ const r=sc.getBoundingClientRect(); if(r && typeof r.bottom==='number' && r.bottom>0) top=r.bottom; }
+  return Math.max(180, Math.round(vh - top - 12));
+}
 function setSheetMode(mode){
-  if(!isMobile()){ const s=$('#sheet'); if(s) s.style.transform=''; positionFabs(); return; }
+  const s=$('#sheet'); if(!s) return;
+  if(!isMobile()){ s.style.transform=''; s.style.maxHeight=''; positionFabs(); return; }
   sheetMode=mode;
+  s.style.maxHeight = sheetCap()+'px';          // keep "full" below the search card
   if(mode==='full') applySheetY(0);
   else applySheetY(peekTarget());
 }
@@ -1354,7 +1396,7 @@ function showSheet(on, mode){
     if(on){ s.classList.add('show'); setSheetMode(mode||sheetMode||'peek'); }
     else { s.classList.remove('show'); s.style.transform=''; positionFabs(); }
   } else {
-    s.classList.toggle('show', !!on); s.style.transform=''; positionFabs();
+    s.classList.toggle('show', !!on); s.style.transform=''; s.style.maxHeight=''; positionFabs();
   }
 }
 function wireSheetDrag(){
@@ -1400,6 +1442,12 @@ $('#swapBtn').addEventListener('click', ()=>{
   drawEndpoints(); syncChips(); maybeRoute();
 });
 $('#addViaBtn').addEventListener('click', ()=>{ state.vias.push(null); renderViaFields(); $(`#via-${state.vias.length-1}`)?.focus(); });
+
+/* explicit "Find route" — routing runs only on this press, never automatically */
+$('#findBtn').addEventListener('click', ()=>{
+  if(state.routing || !state.from || !state.to) return;
+  haptic(10); computeRoute();
+});
 
 /* locate */
 $('#locBtn').addEventListener('click', ()=>{
@@ -1499,6 +1547,7 @@ $$('.opt', pop).forEach(o=>{ o.setAttribute('role','switch'); o.setAttribute('ta
 applyTheme();
 renderEmpty();
 renderViaFields();
+syncFindBtn();
 updateMuteBtn();
 
 /* PWA deep links / home-screen shortcuts: ?go=home|work  (e.g. "Navigate home") */
