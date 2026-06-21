@@ -432,11 +432,34 @@ async function fetchParks(coords, sig){
     const rings=[];
     if(el.type==='way' && el.geometry) rings.push(el.geometry.map(p=>[p.lat,p.lon]));
     else if(el.type==='relation' && el.members) el.members.forEach(mem=>{ if(mem.role==='outer' && mem.geometry) rings.push(mem.geometry.map(p=>[p.lat,p.lon])); });
-    rings.forEach(poly=>{ if(poly.length>=3){ const ac=polyAreaCentroid(poly); if(ac.area>=PARK_MIN_AREA) parks.push({area:ac.area, cent:ac.cent, poly}); } });
+    // keep ALL green polygons (with a bbox for fast point tests) — small ones still count toward
+    // green-cover scoring; the size filter for *dipping* is applied later in parkDipWaypoints.
+    rings.forEach(poly=>{ if(poly.length>=3){
+      const ac=polyAreaCentroid(poly);
+      let mnLa=90,mxLa=-90,mnLo=180,mxLo=-180;
+      for(const p of poly){ if(p[0]<mnLa)mnLa=p[0]; if(p[0]>mxLa)mxLa=p[0]; if(p[1]<mnLo)mnLo=p[1]; if(p[1]>mxLo)mxLo=p[1]; }
+      parks.push({area:ac.area, cent:ac.cent, poly, bbox:[mnLa,mxLa,mnLo,mxLo]});
+    } });
   });
   return parks;
 }
+// fraction (0..1) of a route's length that runs through green polygons — the real "green cover".
+function greenCover(route, polys){
+  if(!route || !route.coords || route.coords.length<2 || !polys || !polys.length) return 0;
+  const inGreen = pt => {
+    const la=pt[0], lo=pt[1];
+    for(const pk of polys){ const b=pk.bbox; if(b && (la<b[0]||la>b[1]||lo<b[2]||lo>b[3])) continue; if(pointInPoly(pt, pk.poly)) return true; }
+    return false;
+  };
+  let green=0, total=0; const c=route.coords;
+  for(let i=1;i<c.length;i++){
+    const segLen=haversine(c[i-1],c[i]); total+=segLen;
+    if(inGreen([(c[i-1][0]+c[i][0])/2,(c[i-1][1]+c[i][1])/2])) green+=segLen;
+  }
+  return total>0 ? green/total : 0;
+}
 function parkDipWaypoints(coords, parks){
+  parks = (parks||[]).filter(p=>p.area>=PARK_MIN_AREA);   // only sizeable parks justify a detour
   const sample = coords.filter((_,i)=>i%3===0); if(sample.length<2) return [];
   const nearest = cent => { let bi=0,bd=Infinity; for(let i=0;i<sample.length;i++){ const d=haversine(cent,sample[i]); if(d<bd){bd=d;bi=i;} } return {pt:sample[bi], frac:bi/sample.length, dist:bd}; };
   const chosen=[];
@@ -454,10 +477,11 @@ function parkDipWaypoints(coords, parks){
   }
   return chosen;
 }
-async function enrichWithParks(base, sig){
+async function enrichWithParks(base, sig, parks, maxDetour){
   try{
     if(!state.from || !state.to || base.dist>50000) return null;   // skip very long routes (huge bbox)
-    const parks = await fetchParks(base.coords, sig);
+    if(!parks) parks = await fetchParks(base.coords, sig);
+    const cap = maxDetour || PARK_MAX_DETOUR;
     const dips = parkDipWaypoints(base.coords, parks);
     if(!dips.length) return null;
     // merge park dips with any user stops, in route order, then re-route through them
@@ -471,10 +495,10 @@ async function enrichWithParks(base, sig){
       return parseRoute(await brouterRoute('scenic', 0, sig, lonlats));
     };
     let pr = await tryDips(dips), used = dips.length;
-    if(pr.dist > base.dist*PARK_MAX_DETOUR && dips.length>1){
+    if(pr.dist > base.dist*cap && dips.length>1){
       pr = await tryDips([dips[0]]); used = 1;        // combo too long → keep just the biggest park
     }
-    if(pr.dist > base.dist*PARK_MAX_DETOUR) return null;   // still too much detour → keep the direct route
+    if(pr.dist > base.dist*cap) return null;          // still too much detour → keep the direct route
     pr.viaParks = used;
     return pr;
   }catch(e){ return null; }
@@ -707,22 +731,59 @@ function routeSimilar(a, b){
   }
   return cnt>0 && (tot/cnt) < 80;                                 // avg sampled separation <80 m → same
 }
-// From a pool of scenic candidates, keep up to 3 DISTINCT ones ordered least→most scenic
-// (proxy: greener routes detour through more parks/paths, so they're longer).
-function pickScenicTiers(pool){
+// From a pool of scenic candidates, keep DISTINCT routes ordered least→most green and only
+// keep a tier if it's GENUINELY greener (≥ GREEN_MARGIN more green cover) than the one below.
+// A tier that can't be made meaningfully greener is dropped — so we never fake a 3rd route.
+const GREEN_MARGIN = 0.04;   // need ≥4 percentage points more green cover to justify another tier
+function pickScenicTiers(pool, greenPolys){
+  const hasGreen = !!(greenPolys && greenPolys.length);
   const uniq=[];
-  for(const r of pool.filter(Boolean)) if(!uniq.some(u=>routeSimilar(u,r))) uniq.push(r);
-  uniq.sort((a,b)=>a.dist-b.dist);
-  if(uniq.length<=3) return uniq;
-  return [uniq[0], uniq[Math.floor(uniq.length/2)], uniq[uniq.length-1]];   // shortest / middle / longest
+  for(const r of pool.filter(Boolean)){
+    r.green = hasGreen ? greenCover(r, greenPolys) : null;
+    if(!uniq.some(u=>routeSimilar(u,r))) uniq.push(r);
+  }
+  if(!uniq.length) return [];
+  if(!hasGreen){                                  // no green data → can't rank greenery; offer ≤2 by distance
+    uniq.sort((a,b)=>a.dist-b.dist);
+    return uniq.length<=2 ? uniq : [uniq[0], uniq[uniq.length-1]];
+  }
+  // Pareto frontier: drop any route that another beats on BOTH axes (greener-or-equal AND
+  // shorter-or-equal) — those are strictly worse. What remains is an honest gradient where
+  // getting greener costs distance. We never show a longer route that's also less green.
+  const front = uniq.filter(r => !uniq.some(o => o!==r &&
+    o.green >= r.green - 1e-9 && o.dist <= r.dist + 1e-9 &&
+    (o.green > r.green + 1e-9 || o.dist < r.dist - 1e-9)));
+  front.sort((a,b)=> a.green - b.green || a.dist - b.dist);
+  if(front.length===1) return front;
+  const lo=front[0], hi=front[front.length-1];
+  if(hi.green - lo.green < GREEN_MARGIN) return [hi];   // no real green gradient → a single (greenest) route
+  // middle tier: the frontier route whose green cover sits nearest the midpoint and clearly between
+  const center=(lo.green+hi.green)/2; let mid=null, bestD=Infinity;
+  for(const r of front){
+    if(r===lo || r===hi) continue;
+    if(r.green>=lo.green+GREEN_MARGIN && r.green<=hi.green-GREEN_MARGIN){
+      const d=Math.abs(r.green-center); if(d<bestD){ bestD=d; mid=r; }
+    }
+  }
+  return mid ? [lo, mid, hi] : [lo, hi];
 }
 function tierLabels(n){
   if(n>=3) return ['🍃 Scenic', '🌿 More scenic', '🌳 Most scenic'];
-  if(n===2) return ['🌿 More scenic', '🌳 Most scenic'];
+  if(n===2) return ['🍃 Scenic', '🌳 Most scenic'];
   return ['🌳 Scenic route'];
 }
-// the recommended default is "More scenic" (the middle tier), else the greenest available
-function recommendedTier(n){ const i = tierLabels(n).findIndex(l=>/More scenic/.test(l)); return i>=0 ? i : Math.max(0, n-1); }
+// recommended default: the middle "More scenic" when 3 tiers exist (the user's preference); with 2,
+// the greener one if it's not a big detour over the more direct, else the direct one.
+function recommendedTier(routes){
+  const n = routes.length;
+  if(n>=3) return 1;
+  if(n===2){
+    const greener = (routes[1].green||0) >= (routes[0].green||0) ? 1 : 0, other = greener?0:1;
+    if(routes[greener].dist <= routes[other].dist) return greener;          // greener AND not longer
+    return routes[greener].dist <= routes[other].dist*1.15 ? greener : other;
+  }
+  return 0;
+}
 
 async function computeRoute(){
   if(!state.from || !state.to) return;
@@ -741,10 +802,10 @@ async function computeRoute(){
   };
   let cands;
   try {
-    cands = await Promise.all([ one('hybrid',0), one('scenic',0), one('scenic',1), one('scenic',2) ]);
+    cands = await Promise.all([ one('hybrid',0), one('scenic',0), one('scenic',1) ]);
   } catch(err){ if(err && err.name==='AbortError') return; cands = []; }
   if(myId!==routeReqId) return;
-  let scenic0 = cands[1] || cands[2] || cands[3] || cands[0];     // best base for park discovery
+  let scenic0 = cands[1] || cands[2] || cands[0];                 // best base for park discovery
   if(!scenic0){
     // every scenic call failed → fall back to a plain trekking route so the user still gets something
     try{ scenic0 = parseRoute(await brouterRoute('trekking', 0, sig)); if(myId===routeReqId) toast('Scenic routing was unavailable — used a standard route'); }
@@ -756,21 +817,31 @@ async function computeRoute(){
   // kick off the shortest-route comparison in parallel (doesn't block the render)
   const comparePromise = shortestBikeRoute(sig).catch(()=>null);
 
-  // discover nearby parks and dip the greenest candidate through them → the "Most scenic" tier.
-  // Done BEFORE showing anything so the routes you see are already final (bounded wait).
-  let pr = null;
+  // fetch green areas ONCE (bounded) — used both to dip routes through parks and to SCORE green cover.
+  let greenPolys = [];
   try{
-    pr = await Promise.race([
-      enrichWithParks(scenic0, sig),
-      new Promise(res=>setTimeout(res, PARK_DISCOVERY_MAX, null))
-    ]);
-  }catch(e){ pr = null; }
+    greenPolys = await Promise.race([
+      fetchParks(scenic0.coords, sig).catch(()=>[]),
+      new Promise(res=>setTimeout(res, PARK_DISCOVERY_MAX, []))
+    ]) || [];
+  }catch(e){ greenPolys = []; }
   if(myId!==routeReqId) return;
 
-  const tiers = pickScenicTiers([...cands, pr]);
+  // build greener candidates by dipping through parks: a moderate pass and a max-greenery pass
+  // (bigger detour budget). Scoring then ranks tiers by ACTUAL green cover, not distance.
+  let prMod=null, prMax=null;
+  if(greenPolys.length){
+    [prMod, prMax] = await Promise.all([
+      enrichWithParks(scenic0, sig, greenPolys, PARK_MAX_DETOUR).catch(()=>null),
+      enrichWithParks(scenic0, sig, greenPolys, 1.45).catch(()=>null),       // allow more detour for max greenery
+    ]);
+    if(myId!==routeReqId) return;
+  }
+
+  const tiers = pickScenicTiers([...cands, prMod, prMax], greenPolys);
   state.routes = tiers.length ? tiers : [scenic0];
   state.routeLabels = tierLabels(state.routes.length);
-  state.activeAlt = recommendedTier(state.routes.length);        // default = "More scenic"
+  state.activeAlt = recommendedTier(state.routes);               // default = "More scenic" (balanced)
   state.route = state.routes[state.activeAlt]; state.compare = null;
   state.routing = false; syncFindBtn();
   drawRoutes(); fitRoute(); renderSummary();
@@ -920,10 +991,13 @@ function elevCard(r){
 function renderSummary(){
   const r = state.route; if(!r){ renderEmpty(); return; }
   const labels = state.routeLabels || tierLabels(state.routes.length);
-  const rec = recommendedTier(state.routes.length);
+  const rec = recommendedTier(state.routes);
   const scenicLabel = i => (labels[i] || `Route ${i+1}`) + (i===rec ? ' · Recommended' : '');
-  const alts = state.routes.length>1 ? `<div class="alts">${state.routes.map((x,i)=>
-      `<button class="altbtn" data-alt="${i}" data-on="${i===state.activeAlt?1:0}">${scenicLabel(i)} · ${fmtD(x.dist)}</button>`).join('')}</div>` : '';
+  const alts = state.routes.length>1 ? `<div class="alts">${state.routes.map((x,i)=>{
+      const meta = (x.green!=null ? `${Math.round(x.green*100)}% green · ` : '') + fmtD(x.dist);
+      return `<button class="altbtn" data-alt="${i}" data-on="${i===state.activeAlt?1:0}">
+        <span class="altname">${scenicLabel(i)}</span><span class="altmeta">${meta}</span></button>`;
+    }).join('')}</div>` : '';
   results.innerHTML = `
     <div class="summary">
       <div class="sumtop">
