@@ -326,8 +326,8 @@ function lonlatString(){
 const CUSTOM_PROFILES = { scenic:'scenic.brf', hybrid:'smart.brf' };
 const CUSTOM_FALLBACK = { scenic:'safety', hybrid:'trekking' };
 const customProfileId = {}, customProfilePromise = {};
-try{ Object.assign(customProfileId, JSON.parse(localStorage.getItem('fietsnav.customProfiles.v2')||'{}')||{}); }catch(e){}
-const saveCustomProfiles = () => { try{ localStorage.setItem('fietsnav.customProfiles.v2', JSON.stringify(customProfileId)); }catch(e){} };
+try{ Object.assign(customProfileId, JSON.parse(localStorage.getItem('fietsnav.customProfiles.v3')||'{}')||{}); }catch(e){}
+const saveCustomProfiles = () => { try{ localStorage.setItem('fietsnav.customProfiles.v3', JSON.stringify(customProfileId)); }catch(e){} };
 async function uploadCustomProfile(name){
   const txt = await (await fetch(CUSTOM_PROFILES[name])).text();
   const r = await fetch(`${BROUTER}/profile`, { method:'POST', body:txt });
