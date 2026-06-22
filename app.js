@@ -1064,7 +1064,8 @@ function exportGPX(){
    mid-segment, off the junctions, on the exact edge we want ridden. That sandwiches every junction
    with a point on its incoming and outgoing edge, pinning our path with the FEWEST points (more
    points = more re-routing artifacts, not fewer). Coords use 6 dp so a point doesn't snap to a
-   neighbouring way. Params follow the osmand.net docs (start / finish / via / type / profile).
+   neighbouring way. NB: the installed OsmAnd app reads `end` + `via` (the osmand.net *web* map's
+   `finish`/`type=osmand` form opens the app with NO route), so we use start / end / via / profile.
    If OsmAnd isn't installed the link gracefully opens osmand.net (which offers it). */
 const OSMAND_MAX_VIA = 24;
 function osmandMapUrl(){
@@ -1087,7 +1088,7 @@ function osmandMapUrl(){
     via.push(p);
   }
   if(via.length > OSMAND_MAX_VIA){ const out=[], step=via.length/OSMAND_MAX_VIA; for(let k=0;k<OSMAND_MAX_VIA;k++) out.push(via[Math.round(k*step)]); via=out; }
-  let u = `https://osmand.net/map?start=${f(state.from.lat,state.from.lon)}&finish=${f(state.to.lat,state.to.lon)}&type=osmand&profile=bicycle`;
+  let u = `https://osmand.net/map?start=${f(state.from.lat,state.from.lon)}&end=${f(state.to.lat,state.to.lon)}&profile=bicycle`;
   if(via.length) u += `&via=${encodeURIComponent(via.map(p=>f(p[0],p[1])).join(';'))}`;
   return u;
 }

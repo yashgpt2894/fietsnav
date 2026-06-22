@@ -92,8 +92,9 @@ T.state.to = { lat: 52.116, lon: 5.114 };
 T.state.route = { coords: oc };
 const ou = T.osmandMapUrl();
 ok('builds osmand.net/map link', /^https:\/\/osmand\.net\/map\?/.test(ou), '(' + (ou || 'null') + ')');
-ok('uses documented finish= (not end=)', ou.includes('finish=') && !/[?&]end=/.test(ou));
-ok('bicycle profile + type=osmand', ou.includes('profile=bicycle') && ou.includes('type=osmand'));
+// the INSTALLED app reads end= (the web map's finish=/type=osmand opens the app with no route)
+ok('uses end= (the param the installed app honours)', /[?&]end=/.test(ou) && !ou.includes('finish='));
+ok('bicycle profile', ou.includes('profile=bicycle'));
 ok('has intermediate via points', /[?&]via=/.test(ou));
 ok('coords at 6 decimals', /start=52\.100000,5\.100000/.test(ou), '(' + ou.split('&')[0] + ')');
 // no via should sit exactly on the route's corner vertex (52.100,5.114) — that caused the detours
