@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>FietsNav — promo reel</title>
+<style>
+  /* ============ FietsNav brand tokens (matched to the real app) ============ */
+  :root{
+    --accent:#0e7c5a; --accent-d:#0a5e44; --accent-l:#e6f4ee; --on-accent:#fff;
+    --scenic:#2f9e44; --smart:#4263eb; --short:#7048e8; --fast:#e8590c; --quiet:#1971c2;
+    --ink:#15212b; --ink-2:#3a4753; --muted:#6b7682; --line:#e6eaee;
+    --surface:#fff; --surface-2:#f4f6f8; --surface-3:#eef1f4;
+    --sky1:#0e7c5a; --sky2:#16a06f; --sky3:#3fbf86;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI Variable","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:#05100b;font-family:var(--font);overflow:hidden;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  #app{position:fixed;inset:0;overflow:hidden;background:#05100b}
+
+  /* fixed design canvas — scaled to fit any screen, recorded as a clean 9:16 */
+  #stage{position:absolute;top:0;left:0;width:1080px;height:1920px;transform-origin:top left;overflow:hidden;
+    background:
+      radial-gradient(120% 80% at 80% -10%, #6fe0ad 0%, transparent 55%),
+      radial-gradient(120% 90% at 0% 110%, #0a5e44 0%, transparent 55%),
+      linear-gradient(160deg, var(--sky2) 0%, var(--sky1) 48%, #0a5240 100%);
+    color:#fff;font-size:32px}
+
+  /* floating particles */
+  .parts{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:1}
+  .p{position:absolute;opacity:.0;animation:floaty linear infinite}
+  @keyframes floaty{
+    0%{transform:translateY(60px) rotate(0);opacity:0}
+    12%{opacity:.55}
+    88%{opacity:.55}
+    100%{transform:translateY(-1980px) rotate(220deg);opacity:0}}
+
+  /* progress segments */
+  .prog{position:absolute;top:34px;left:48px;right:48px;display:flex;gap:10px;z-index:30}
+  .prog .seg{flex:1;height:7px;border-radius:6px;background:rgba(255,255,255,.28);overflow:hidden}
+  .prog .seg i{display:block;height:100%;width:0;background:#fff;border-radius:6px}
+  .prog .seg.run i{width:100%}
+  .prog .seg.done i{width:100%;transition:none}
+
+  /* scenes */
+  .scene{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    opacity:0;visibility:hidden;z-index:5}
+  .scene.active{opacity:1;visibility:visible;z-index:10}
+
+  /* headline blocks */
+  .cap{position:absolute;left:64px;right:64px;text-align:center;z-index:20}
+  .cap .k{font-size:30px;font-weight:800;letter-spacing:3px;text-transform:uppercase;
+    color:#bff3da;opacity:.95}
+  .cap h2{font-size:74px;line-height:1.02;font-weight:850;letter-spacing:-1.5px;
+    text-shadow:0 6px 30px rgba(0,40,25,.45);margin-top:10px}
+  .cap h2 em{font-style:normal;color:#aef5cf}
+  .cap p{font-size:38px;line-height:1.25;font-weight:600;color:#eafff5;margin-top:18px;opacity:.96}
+
+  /* scene-enter animation helpers (run when .active) */
+  .scene.active .rise{animation:rise .7s cubic-bezier(.2,.7,.25,1) both}
+  .scene.active .rise.d1{animation-delay:.12s}
+  .scene.active .rise.d2{animation-delay:.26s}
+  .scene.active .rise.d3{animation-delay:.42s}
+  .scene.active .pop{animation:pop .7s cubic-bezier(.34,1.56,.64,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(46px)}to{opacity:1;transform:none}}
+  @keyframes pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
+
+  /* =================== PHONE DEVICE =================== */
+  .phone{position:relative;width:672px;height:1376px;border-radius:78px;
+    background:linear-gradient(160deg,#11181f,#05080b);
+    padding:20px;box-shadow:0 50px 120px rgba(0,30,18,.55),0 0 0 3px rgba(255,255,255,.06) inset;}
+  .screen{position:relative;width:100%;height:100%;border-radius:60px;overflow:hidden;
+    background:var(--surface);display:flex;flex-direction:column}
+  .notch{position:absolute;top:24px;left:50%;transform:translateX(-50%);width:170px;height:34px;
+    background:#05080b;border-radius:20px;z-index:40}
+  .sb{flex:none;display:flex;align-items:center;justify-content:space-between;
+    padding:26px 46px 6px;font-size:27px;font-weight:700;color:var(--ink);z-index:5}
+  .sb .ico{display:flex;gap:9px;align-items:center}
+  .sb .bat{width:46px;height:23px;border:3px solid var(--ink);border-radius:7px;position:relative;display:inline-block}
+  .sb .bat::after{content:"";position:absolute;left:3px;top:3px;bottom:3px;width:30px;background:var(--ink);border-radius:2px}
+  .sb .bat::before{content:"";position:absolute;right:-7px;top:7px;width:4px;height:9px;background:var(--ink);border-radius:2px}
+
+  /* mini map */
+  .map{position:absolute;inset:0;z-index:0}
+  .map svg{width:100%;height:100%;display:block}
+
+  /* ---- search card (matches the app) ---- */
+  .card{position:relative;z-index:6;margin:14px;border-radius:34px;padding:22px 22px 24px;
+    background:rgba(255,255,255,.86);backdrop-filter:saturate(1.6) blur(18px);
+    border:1px solid rgba(255,255,255,.7);box-shadow:0 24px 60px rgba(16,24,32,.22)}
+  .brandrow{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+  .blogo{width:62px;height:62px;border-radius:20px;display:grid;place-items:center;color:#fff;
+    background:linear-gradient(140deg,var(--accent),#19b07c);box-shadow:0 6px 18px rgba(14,124,90,.45)}
+  .blogo svg{width:36px;height:36px}
+  .btitle{font-size:34px;font-weight:800;letter-spacing:-.6px;color:var(--ink)}
+  .bsub{font-size:21px;color:var(--muted);font-weight:600;margin-top:-2px}
+  .fld{display:flex;align-items:center;gap:18px;background:var(--surface-2);border-radius:22px;
+    padding:8px 22px;margin-top:13px;border:2.5px solid transparent}
+  .fld.on{background:#fff;border-color:var(--accent);box-shadow:0 0 0 7px var(--accent-l)}
+  .fld .dot{width:20px;height:20px;border-radius:50%;flex:none}
+  .dot.from{background:#fff;border:5px solid var(--accent)}
+  .dot.to{background:var(--accent);box-shadow:0 0 0 5px var(--accent-l)}
+  .fld .txt{flex:1;font-size:29px;font-weight:650;color:var(--ink);padding:22px 0}
+  .fld .txt.ph{color:var(--muted);font-weight:600}
+  .findbtn{margin-top:20px;width:100%;display:flex;align-items:center;justify-content:center;gap:16px;
+    background:var(--accent);color:#fff;font-size:31px;font-weight:800;padding:26px;border-radius:22px;
+    box-shadow:0 12px 30px rgba(14,124,90,.45)}
+  .findbtn svg{width:34px;height:34px}
+
+  /* ---- bottom sheet / tiers (matches the app) ---- */
+  .sheet{margin-top:auto;z-index:6;background:#fff;border-radius:42px 42px 0 0;
+    box-shadow:0 -16px 50px rgba(16,24,32,.22);padding:14px 26px 30px}
+  .grab{width:74px;height:9px;border-radius:6px;background:var(--line);margin:8px auto 18px}
+  .sumtop{display:flex;align-items:baseline;gap:16px;margin-bottom:6px}
+  .sumtop .time{font-size:52px;font-weight:850;color:var(--accent-d);letter-spacing:-1px}
+  .sumtop .dist{font-size:27px;color:var(--muted);font-weight:700}
+  .sumtop .pill{margin-left:auto;font-size:22px;font-weight:700;color:var(--ink-2);
+    background:var(--surface-2);border-radius:14px;padding:11px 16px}
+  .alts{display:flex;flex-direction:column;gap:14px;margin:18px 0 22px}
+  .alt{display:flex;align-items:center;gap:18px;padding:22px 24px;border-radius:22px;
+    background:var(--surface-2);border:2.5px solid transparent}
+  .alt.on{background:var(--accent-l);border-color:var(--accent)}
+  .alt .nm{font-size:30px;font-weight:800;color:var(--ink);white-space:nowrap}
+  .alt.on .nm{color:var(--accent-d)}
+  .alt .bar{flex:1;height:18px;border-radius:10px;background:var(--surface-3);overflow:hidden}
+  .alt .bar i{display:block;height:100%;width:0;border-radius:10px;
+    background:linear-gradient(90deg,#74d99f,var(--scenic))}
+  .scene.active .alt .bar i{animation:grow 1s .5s cubic-bezier(.2,.7,.25,1) both}
+  @keyframes grow{from{width:0}to{width:var(--w)}}
+  .alt .pct{font-size:26px;font-weight:800;color:var(--scenic);white-space:nowrap;min-width:96px;text-align:right}
+  .alt .rec{font-size:18px;font-weight:800;color:#fff;background:var(--accent);border-radius:10px;padding:6px 12px;white-space:nowrap}
+  .startbtn{width:100%;display:flex;align-items:center;justify-content:center;gap:16px;
+    background:var(--accent);color:#fff;font-size:33px;font-weight:850;padding:30px;border-radius:26px;
+    box-shadow:0 14px 34px rgba(14,124,90,.45)}
+  .startbtn svg{width:38px;height:38px}
+
+  /* ---- OsmAnd nav frame ---- */
+  .osm{position:absolute;inset:0;background:#0d1622;color:#eaf2ff;display:flex;flex-direction:column}
+  .osm .map{z-index:0}
+  .osmbanner,.osmtag,.osmbar{position:relative;z-index:2}
+  .osmbanner{margin:90px 28px 0;background:#15a06a;border-radius:30px;padding:34px 36px;
+    display:flex;align-items:center;gap:30px;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+  .osmbanner .ar{width:96px;height:96px;flex:none;display:grid;place-items:center}
+  .osmbanner .ar svg{width:96px;height:96px;color:#fff}
+  .osmbanner .d{font-size:62px;font-weight:850;line-height:1}
+  .osmbanner .s{font-size:30px;font-weight:650;opacity:.92;margin-top:8px}
+  .osmtag{margin:22px auto 0;background:rgba(255,255,255,.12);border-radius:16px;padding:12px 24px;
+    font-size:24px;font-weight:700;letter-spacing:.5px}
+  .osmbar{margin-top:auto;background:#101a28;border-top:1px solid rgba(255,255,255,.08);
+    display:flex;align-items:center;justify-content:space-around;padding:36px 30px 46px}
+  .osmbar .v{text-align:center}
+  .osmbar .v b{display:block;font-size:50px;font-weight:850;color:#5fe0a3}
+  .osmbar .v span{font-size:24px;color:#9fb3c8;font-weight:650}
+  .osmbar .go{background:#15a06a;color:#fff;font-size:30px;font-weight:850;padding:24px 40px;border-radius:20px}
+
+  /* ---- install screen ---- */
+  .installscreen{position:absolute;inset:0;background:linear-gradient(180deg,#1b3850,#0b1b2b);
+    display:flex;flex-direction:column;align-items:center;padding:104px 42px 56px}
+  .icons{display:flex;gap:44px;justify-content:center;margin-bottom:52px}
+  .appicon{display:flex;flex-direction:column;align-items:center;gap:14px;opacity:.34}
+  .appicon .sq{width:122px;height:122px;border-radius:32px;background:rgba(255,255,255,.16)}
+  .appicon .lb{font-size:21px;color:#dbe7f3;font-weight:600;min-height:25px}
+  .appicon.fiets{opacity:1}
+  .appicon.fiets .sq{background:linear-gradient(140deg,var(--accent),#19b07c);
+    display:grid;place-items:center;color:#fff;box-shadow:0 18px 40px rgba(14,124,90,.6)}
+  .appicon.fiets .sq svg{width:78px;height:78px}
+  .scene.active .appicon.fiets{animation:plop .8s .3s cubic-bezier(.34,1.56,.64,1) both}
+  @keyframes plop{0%{transform:scale(0) translateY(-40px);opacity:0}100%{transform:none;opacity:1}}
+
+  /* steps */
+  .steps{display:flex;flex-direction:column;gap:24px;width:100%}
+  .step{display:flex;align-items:center;gap:22px;background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.18);border-radius:26px;padding:28px 28px;
+    backdrop-filter:blur(8px)}
+  .step .n{width:62px;height:62px;flex:none;border-radius:50%;background:#fff;color:var(--accent-d);
+    font-size:32px;font-weight:850;display:grid;place-items:center}
+  .step .t{font-size:30px;font-weight:750;color:#fff;line-height:1.25}
+  .step .t b{color:#aef5cf}
+
+  /* tap ripple */
+  .tap{position:absolute;width:120px;height:120px;border-radius:50%;
+    border:6px solid rgba(255,255,255,.9);z-index:50;opacity:0;pointer-events:none}
+  .scene.active .tap{animation:tap 1.3s 1s ease-out infinite}
+  @keyframes tap{0%{transform:scale(.3);opacity:.9}70%{opacity:.0}100%{transform:scale(1.6);opacity:0}}
+
+  /* big logo lockup (S1 + S6) */
+  .lock{display:flex;flex-direction:column;align-items:center;gap:30px}
+  .biglogo{width:230px;height:230px;border-radius:62px;display:grid;place-items:center;color:#fff;
+    background:linear-gradient(140deg,#0e7c5a,#27c98c);box-shadow:0 30px 80px rgba(0,40,25,.5),0 0 0 2px rgba(255,255,255,.2) inset}
+  .biglogo svg{width:140px;height:140px}
+  .wordmark{font-size:108px;font-weight:850;letter-spacing:-3px;color:#fff;text-shadow:0 8px 36px rgba(0,40,25,.5)}
+  .url{font-size:52px;font-weight:850;color:#06231a;background:#aef5cf;border-radius:24px;
+    padding:22px 44px;box-shadow:0 18px 44px rgba(0,40,25,.35)}
+  .tags{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+  .tags span{font-size:30px;font-weight:750;color:#eafff5;background:rgba(255,255,255,.16);
+    border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:14px 28px}
+
+  /* replay control (not part of the recording frame area) */
+  #replay{position:absolute;bottom:30px;right:30px;z-index:60;background:rgba(255,255,255,.16);
+    color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:18px;padding:16px 24px;
+    font-size:26px;font-weight:750;cursor:pointer;font-family:var(--font);backdrop-filter:blur(6px)}
+  #hint{position:absolute;bottom:30px;left:30px;z-index:60;color:rgba(255,255,255,.55);
+    font-size:22px;font-weight:600;max-width:520px;line-height:1.3}
+  /* hide helper controls during playback so they stay out of the recording */
+  #replay,#hint{transition:opacity .45s ease}
+  #stage.hideui #replay,#stage.hideui #hint{opacity:0;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div class="parts" id="parts"></div>
+
+    <div class="prog" id="prog">
+      <div class="seg"><i></i></div><div class="seg"><i></i></div><div class="seg"><i></i></div>
+      <div class="seg"><i></i></div><div class="seg"><i></i></div><div class="seg"><i></i></div>
+    </div>
+
+    <!-- ============ S1 : HOOK ============ -->
+    <section class="scene" data-dur="2800">
+      <div class="cap" style="top:660px">
+        <div class="lock">
+          <div class="biglogo pop">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 100-2 1 1 0 000 2zm-3.5 11.5L9 9l3 3h4l-2-6"/></svg>
+          </div>
+          <div class="wordmark rise d1">FietsNav</div>
+          <p class="rise d2" style="font-size:42px;font-weight:700;color:#eafff5">The prettiest way to ride 🚲🌿</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ S2 : SET DESTINATION ============ -->
+    <section class="scene" data-dur="3900">
+      <div class="cap rise" style="top:120px">
+        <div class="k">Plan a ride</div>
+        <h2>Most apps pick the <em>fastest</em>.<br>We pick the <em>greenest</em>. 🌳</h2>
+      </div>
+      <div class="phone rise d1" style="margin-top:430px">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="map">
+            <svg viewBox="0 0 640 1300" preserveAspectRatio="xMidYMid slice">
+              <rect width="640" height="1300" fill="#eef3ee"/>
+              <path d="M-40 980 Q200 900 360 1010 T720 980 V1340 H-40 Z" fill="#cfeccf"/>
+              <ellipse cx="120" cy="430" rx="190" ry="150" fill="#cdeccd"/>
+              <ellipse cx="540" cy="300" rx="170" ry="140" fill="#cdeccd"/>
+              <path d="M-20 700 C160 660 200 840 420 800 S660 720 700 760" stroke="#bcdcf2" stroke-width="46" fill="none" opacity=".85"/>
+              <g stroke="#dde3e7" stroke-width="10" fill="none">
+                <path d="M80 0 V1300"/><path d="M360 0 V1300"/><path d="M560 0 V1300"/>
+                <path d="M0 360 H640"/><path d="M0 760 H640"/>
+              </g>
+            </svg>
+          </div>
+          <div class="sb"><span>9:41</span><span class="ico">📶 <span class="bat"></span></span></div>
+          <div class="card">
+            <div class="brandrow">
+              <div class="blogo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 100-2 1 1 0 000 2zm-3.5 11.5L9 9l3 3h4l-2-6"/></svg></div>
+              <div><div class="btitle">FietsNav</div><div class="bsub">scenic bike routing</div></div>
+            </div>
+            <div class="fld"><span class="dot from"></span><span class="txt">Vondelpark, Amsterdam</span></div>
+            <div class="fld on"><span class="dot to"></span><span class="txt">Utrecht Centraal</span></div>
+            <div class="findbtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
+              Find the route
+            </div>
+          </div>
+          <div class="tap" style="bottom:120px;left:50%;transform:translateX(-50%)"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ S3 : THREE GREEN TIERS ============ -->
+    <section class="scene" data-dur="4700">
+      <div class="cap rise" style="top:120px">
+        <div class="k">3 scenic levels</div>
+        <h2>Ranked by <em>real</em> green cover. 🍃🌿🌳</h2>
+      </div>
+      <div class="phone rise d1" style="margin-top:430px">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="map">
+            <svg viewBox="0 0 640 1300" preserveAspectRatio="xMidYMid slice">
+              <rect width="640" height="1300" fill="#e9f2ea"/>
+              <ellipse cx="160" cy="520" rx="240" ry="190" fill="#bfe8c0"/>
+              <ellipse cx="520" cy="240" rx="200" ry="160" fill="#bfe8c0"/>
+              <ellipse cx="470" cy="760" rx="170" ry="140" fill="#bfe8c0"/>
+              <path d="M120 120 C240 320 60 460 220 560 S520 600 420 760 T520 1180"
+                    stroke="#0e7c5a" stroke-width="22" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2200" stroke-dashoffset="2200">
+                <animate attributeName="stroke-dashoffset" from="2200" to="0" dur="1.4s" begin="0.2s" fill="freeze"/>
+              </path>
+              <circle r="17" fill="#0e7c5a" stroke="#fff" stroke-width="6">
+                <animateMotion dur="1.4s" begin="0.2s" fill="freeze" rotate="auto"
+                  path="M120 120 C240 320 60 460 220 560 S520 600 420 760 T520 1180"/>
+              </circle>
+              <circle cx="120" cy="120" r="15" fill="#fff" stroke="#0e7c5a" stroke-width="7"/>
+            </svg>
+          </div>
+          <div class="sb"><span>9:41</span><span class="ico">📶 <span class="bat"></span></span></div>
+          <div class="sheet">
+            <div class="grab"></div>
+            <div class="sumtop"><span class="time">1 h 12</span><span class="dist">24.6 km</span><span class="pill">↑ 38 m</span></div>
+            <div class="alts">
+              <div class="alt"><span class="nm">🍃 Scenic</span><span class="bar"><i style="--w:24%"></i></span><span class="pct">24%</span></div>
+              <div class="alt on"><span class="nm">🌿 More scenic</span><span class="bar"><i style="--w:46%"></i></span><span class="pct">46%</span><span class="rec">PICK</span></div>
+              <div class="alt"><span class="nm">🌳 Most scenic</span><span class="bar"><i style="--w:68%"></i></span><span class="pct">68%</span></div>
+            </div>
+            <div class="startbtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+              Start in OsmAnd
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ S4 : ONE-TAP OSMAND ============ -->
+    <section class="scene" data-dur="4400">
+      <div class="cap rise" style="top:120px">
+        <div class="k">One tap</div>
+        <h2>Voice nav in <em>OsmAnd</em> 🔊</h2>
+      </div>
+      <div class="phone rise d1" style="margin-top:430px">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="osm">
+            <div class="map">
+              <svg viewBox="0 0 640 1300" preserveAspectRatio="xMidYMid slice">
+                <rect width="640" height="1300" fill="#0d1622"/>
+                <ellipse cx="180" cy="560" rx="240" ry="200" fill="#12321f"/>
+                <ellipse cx="500" cy="980" rx="220" ry="180" fill="#12321f"/>
+                <path d="M320 1300 C320 1040 220 980 300 760 S520 600 360 420 T420 60"
+                      stroke="#39d98a" stroke-width="26" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M320 1300 C320 1100 250 1040 300 900" stroke="#7af0b6" stroke-width="12" fill="none" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="osmbanner rise d2">
+              <div class="ar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19V11a3 3 0 013-3h9"/><path d="M13 4l5 4-5 4"/></svg></div>
+              <div><div class="d">In 200 m</div><div class="s">turn right onto Maliebaan 🌳</div></div>
+            </div>
+            <div class="osmtag rise d3">🚴 Bicycle · following your scenic route</div>
+            <div class="osmbar">
+              <div class="v"><b>18</b><span>km/h</span></div>
+              <div class="v"><b>24.6</b><span>km left</span></div>
+              <div class="v"><b>10:53</b><span>arrival</span></div>
+              <div class="go">▾</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ S5 : INSTALL IN 3 TAPS ============ -->
+    <section class="scene" data-dur="4000">
+      <div class="cap rise" style="top:120px">
+        <div class="k">No app store needed</div>
+        <h2>Install in <em>3 taps</em> 📲</h2>
+      </div>
+      <div class="phone rise d1" style="margin-top:430px">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="installscreen">
+            <div class="icons">
+              <div class="appicon"><div class="sq"></div><div class="lb">&nbsp;</div></div>
+              <div class="appicon fiets"><div class="sq"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 100-2 1 1 0 000 2zm-3.5 11.5L9 9l3 3h4l-2-6"/></svg></div><div class="lb">FietsNav</div></div>
+              <div class="appicon"><div class="sq"></div><div class="lb">&nbsp;</div></div>
+            </div>
+            <div class="steps">
+              <div class="step rise d1"><div class="n">1</div><div class="t">Open <b>fietsnav.netlify.app</b></div></div>
+              <div class="step rise d2"><div class="n">2</div><div class="t">Tap <b>Share</b> / <b>⋮ menu</b></div></div>
+              <div class="step rise d3"><div class="n">3</div><div class="t"><b>Add to Home Screen</b></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ S6 : CTA ============ -->
+    <section class="scene" data-dur="3200">
+      <div class="cap" style="top:560px">
+        <div class="lock">
+          <div class="biglogo pop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 100-2 1 1 0 000 2zm-3.5 11.5L9 9l3 3h4l-2-6"/></svg></div>
+          <div class="wordmark rise d1">FietsNav</div>
+          <div class="url rise d2">fietsnav.netlify.app</div>
+          <div class="tags rise d3"><span>Free</span><span>No sign-up</span><span>No ads</span><span>Works offline</span></div>
+          <p class="rise d3" style="font-size:40px;font-weight:800;color:#aef5cf;margin-top:14px">Ride greener. 🌿🚲</p>
+        </div>
+      </div>
+    </section>
+
+    <button id="replay">↻ Replay</button>
+    <div id="hint">Plays automatically · tap to replay · controls fade for recording</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var stage=document.getElementById('stage');
+  function fit(){
+    var s=Math.min(innerWidth/1080, innerHeight/1920);
+    var x=(innerWidth-1080*s)/2, y=(innerHeight-1920*s)/2;
+    stage.style.transform='translate('+x+'px,'+y+'px) scale('+s+')';
+  }
+  addEventListener('resize',fit); fit();
+
+  // particles (leaves + dots drifting up)
+  var parts=document.getElementById('parts'), emo=['🍃','🌿','🚲','🍃','•','🌳'];
+  for(var i=0;i<22;i++){
+    var p=document.createElement('div'); p.className='p';
+    var leaf=emo[i%emo.length];
+    p.textContent=leaf;
+    var sz=(leaf==='•')?18:(26+(i*7)%44);
+    p.style.fontSize=sz+'px';
+    p.style.left=((i*47)%100)+'%';
+    p.style.bottom='-60px';
+    var dur=9+(i%7)*1.6; p.style.animationDuration=dur+'s';
+    p.style.animationDelay=(-(i*0.9))+'s';
+    p.style.color='rgba(255,255,255,.5)';
+    parts.appendChild(p);
+  }
+
+  var scenes=[].slice.call(document.querySelectorAll('.scene'));
+  var segs=[].slice.call(document.querySelectorAll('#prog .seg'));
+  var durs=scenes.map(function(s){return +s.dataset.dur;});
+  var timers=[], idx=-1;
+
+  function clearTimers(){ timers.forEach(clearTimeout); timers=[]; }
+  function setProg(active){
+    segs.forEach(function(seg,j){
+      var fill=seg.querySelector('i');
+      seg.classList.remove('run','done');
+      if(j<active){ seg.classList.add('done'); }
+      else if(j===active){ fill.style.transition='none'; fill.style.width='0';
+        void fill.offsetWidth;
+        fill.style.transition='width '+(durs[j]/1000)+'s linear';
+        fill.style.width='100%';
+      } else { fill.style.transition='none'; fill.style.width='0'; }
+    });
+  }
+  function show(i){
+    idx=i;
+    scenes.forEach(function(s,j){ s.classList.toggle('active', j===i); });
+    setProg(i);
+  }
+  function play(){
+    clearTimers();
+    var t=0;
+    scenes.forEach(function(s,i){
+      timers.push(setTimeout(function(){ show(i); }, t));
+      t+=durs[i];
+    });
+    // loop with a short breath
+    timers.push(setTimeout(function(){ play(); }, t+900));
+  }
+
+  // auto-hide the helper controls a few seconds in, so they never land in a recording
+  var uiTimer;
+  function flashUI(){
+    stage.classList.remove('hideui');
+    clearTimeout(uiTimer);
+    uiTimer=setTimeout(function(){ stage.classList.add('hideui'); }, 3200);
+  }
+
+  document.getElementById('replay').addEventListener('click', function(e){ e.stopPropagation(); play(); flashUI(); });
+  stage.addEventListener('click', function(){ play(); flashUI(); });
+
+  play();
+  flashUI();
+})();
+</script>
+</body>
+</html>
