@@ -99,8 +99,10 @@ scenic → Most scenic ladder. A tier only appears if it's genuinely greener tha
 so you never get three near-identical "options".
 
 **5. Navigation hand-off.** Turn-by-turn is delegated to OsmAnd via a deep link
-(`https://osmand.net/map?...&profile=bicycle`) carrying ~28 waypoints sampled from the route,
-which OsmAnd traces closely on its bike profile. **Google Maps deep links are capped at 3
+(`https://osmand.net/map?...&profile=bicycle`). OsmAnd re-routes between the points it's handed, so
+FietsNav samples one waypoint at the *mid-point of each stretch between turns* — off the junctions,
+on the exact path it wants ridden — which pins the scenic route closely with the fewest points
+(more points cause more re-routing wobble, not less). **Google Maps deep links are capped at 3
 waypoints and recompute their own path**, so they can't follow a custom scenic route — which is
 why FietsNav uses OsmAnd. For pixel-perfect fidelity, the GPX export carries every point.
 

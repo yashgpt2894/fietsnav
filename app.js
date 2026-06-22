@@ -1056,20 +1056,38 @@ function exportGPX(){
   try{ downloadFile(g.gpx, 'application/gpx+xml', g.filename); toast('GPX exported ⬇'); haptic(20); }
   catch(e){ toast('Could not export GPX'); }
 }
-/* One-tap hand-off: an OsmAnd Universal/App link that opens OsmAnd straight to our route on the
-   bike profile (you tap Go). OsmAnd re-routes between waypoints, so we down-sample the polyline to
-   ~28 turn-significant points (Ramer–Douglas–Peucker) — enough to hug our route closely without an
-   over-long URL. If OsmAnd isn't installed the link gracefully opens osmand.net (which offers it). */
-const OSMAND_MAX_VIA = 28;
+/* One-tap hand-off: an OsmAnd link that opens OsmAnd straight to our route on the bike profile
+   (you tap Go). OsmAnd RE-ROUTES between the points we pass, so where we place them matters:
+   RDP corners sit ON junctions, and OsmAnd tends to U-turn to "touch" a point on a junction, or
+   snap it to a parallel path — that's the source of the little unnecessary detours. So instead of
+   the corners, we pass ONE point at the arc-length MID-POINT of each stretch *between* corners:
+   mid-segment, off the junctions, on the exact edge we want ridden. That sandwiches every junction
+   with a point on its incoming and outgoing edge, pinning our path with the FEWEST points (more
+   points = more re-routing artifacts, not fewer). Coords use 6 dp so a point doesn't snap to a
+   neighbouring way. Params follow the osmand.net docs (start / finish / via / type / profile).
+   If OsmAnd isn't installed the link gracefully opens osmand.net (which offers it). */
+const OSMAND_MAX_VIA = 24;
 function osmandMapUrl(){
   const r = state.route; if(!state.from || !state.to || !r || !r.coords || r.coords.length<2) return null;
-  const f = (lat,lon)=>`${(+lat).toFixed(5)},${(+lon).toFixed(5)}`;
+  const f = (lat,lon)=>`${(+lat).toFixed(6)},${(+lon).toFixed(6)}`;
   const c = r.coords;
-  let eps=25, keep=rdpKeep(c, eps);
-  while(keep.length > OSMAND_MAX_VIA+2 && eps<6000){ eps*=1.4; keep=rdpKeep(c, eps); }
-  let via = keep.filter(i=>i>0 && i<c.length-1).map(i=>c[i]);
+  // shape-defining corners (≈ junctions); relax the tolerance until we're under the point budget
+  let eps=25, idx=rdpKeep(c, eps);
+  while(idx.length > OSMAND_MAX_VIA+2 && eps<6000){ eps*=1.4; idx=rdpKeep(c, eps); }
+  // one via at the arc-length mid-point of each corner→corner stretch (mid-segment, off junctions)
+  let via=[];
+  for(let k=0;k<idx.length-1;k++){
+    const a=idx[k], b=idx[k+1]; if(b-a<1) continue;
+    let tot=0; for(let i=a;i<b;i++) tot+=haversine(c[i],c[i+1]);
+    if(tot<1) continue;
+    const half=tot/2; let acc=0, p=c[a];
+    for(let i=a;i<b;i++){ const s=haversine(c[i],c[i+1]);
+      if(acc+s>=half){ const t=s?(half-acc)/s:0; p=[c[i][0]+(c[i+1][0]-c[i][0])*t, c[i][1]+(c[i+1][1]-c[i][1])*t]; break; }
+      acc+=s; }
+    via.push(p);
+  }
   if(via.length > OSMAND_MAX_VIA){ const out=[], step=via.length/OSMAND_MAX_VIA; for(let k=0;k<OSMAND_MAX_VIA;k++) out.push(via[Math.round(k*step)]); via=out; }
-  let u = `https://osmand.net/map?start=${f(state.from.lat,state.from.lon)}&end=${f(state.to.lat,state.to.lon)}&profile=bicycle`;
+  let u = `https://osmand.net/map?start=${f(state.from.lat,state.from.lon)}&finish=${f(state.to.lat,state.to.lon)}&type=osmand&profile=bicycle`;
   if(via.length) u += `&via=${encodeURIComponent(via.map(p=>f(p[0],p[1])).join(';'))}`;
   return u;
 }
@@ -1077,8 +1095,9 @@ function osmandMapUrl(){
 const isIOSDevice = () => { try{ return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1); }catch(e){ return false; } };
 const isAndroidDevice = () => { try{ return /android/i.test(navigator.userAgent); }catch(e){ return false; } };
 function osmandStoreUrl(){
+  // free apps only: net.osmand (Android) / id934850257 (iOS). net.osmand.plus is the PAID "+" build.
   if(isIOSDevice()) return 'https://apps.apple.com/app/osmand-maps-travel-navigate/id934850257';
-  if(isAndroidDevice()) return 'https://play.google.com/store/apps/details?id=net.osmand.plus';
+  if(isAndroidDevice()) return 'https://play.google.com/store/apps/details?id=net.osmand';
   return 'https://osmand.net/';   // desktop → OsmAnd site (links to both stores)
 }
 

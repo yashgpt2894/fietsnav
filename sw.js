@@ -2,7 +2,7 @@
    - App shell + Leaflet: stale-while-revalidate (fast open, auto-updates next load).
    - Map tiles: cache-first with a size cap (fast revisits + partial offline).
    - Routing / search / POIs (BRouter, Photon, Overpass): always network (live data). */
-const SHELL = 'fietsnav-shell-v5';
+const SHELL = 'fietsnav-shell-v6';
 const TILES = 'fietsnav-tiles-v1';
 const TILE_CAP = 250;   // tiles are cross-origin/opaque; each inflates quota (~MBs), so cap low
 const LOCAL = ['./', './index.html', './app.js', './scenic.brf', './smart.brf', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
