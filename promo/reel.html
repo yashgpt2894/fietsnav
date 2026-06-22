@@ -181,6 +181,14 @@
   .step .t{font-size:30px;font-weight:750;color:#fff;line-height:1.25}
   .step .t b{color:#aef5cf}
 
+  /* feature scene (no phone) */
+  .feats{display:flex;flex-direction:column;gap:30px;width:860px;margin-top:600px}
+  .feat{display:flex;align-items:center;gap:30px;background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.2);border-radius:32px;padding:38px 40px;
+    backdrop-filter:blur(8px);font-size:40px;font-weight:650;color:#fff;line-height:1.22}
+  .feat .fi{font-size:62px;flex:none;width:74px;text-align:center}
+  .feat b{color:#aef5cf;font-weight:800}
+
   /* tap ripple */
   .tap{position:absolute;width:120px;height:120px;border-radius:50%;
     border:6px solid rgba(255,255,255,.9);z-index:50;opacity:0;pointer-events:none}
@@ -216,7 +224,7 @@
     <div class="parts" id="parts"></div>
 
     <div class="prog" id="prog">
-      <div class="seg"><i></i></div><div class="seg"><i></i></div><div class="seg"><i></i></div>
+      <div class="seg"><i></i></div><div class="seg"><i></i></div><div class="seg"><i></i></div><div class="seg"><i></i></div>
       <div class="seg"><i></i></div><div class="seg"><i></i></div><div class="seg"><i></i></div>
     </div>
 
@@ -314,6 +322,19 @@
             </div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ============ S3.5 : SMART LANES + FEWER RED LIGHTS ============ -->
+    <section class="scene" data-dur="3800">
+      <div class="cap rise" style="top:150px">
+        <div class="k">Routing smarts</div>
+        <h2>Best lanes.<br>Fewest red lights. 🚦</h2>
+      </div>
+      <div class="feats">
+        <div class="feat rise d1"><span class="fi">🚲</span><span>Favours the wide <b>two-way &amp; segregated</b> cycle paths</span></div>
+        <div class="feat rise d2"><span class="fi">🚦</span><span>Steers <b>around traffic lights</b> — fewer stops</span></div>
+        <div class="feat rise d3"><span class="fi">🌳</span><span>…all while keeping it <b>green</b></span></div>
       </div>
     </section>
 

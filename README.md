@@ -41,6 +41,10 @@ shortcuts. The site is served over HTTPS, so the **"use my location"** feature w
 - **Scenic-first routing.** Every route maximises dedicated cycle paths and tracks through
   parks, forest and along the water (typically half or more on car-free cycleways), only
   dropping onto quiet country roads where no path exists.
+- **Picks the best lanes, dodges red lights.** Routing favours the Netherlands' premium cycle
+  infrastructure — the wide **two-way / segregated cycle paths** and **fietsstraten** (bike-priority
+  streets) — over ordinary lanes, and **adds a cost to traffic-signal crossings**, so your ride
+  flows with fewer red-light stops.
 - **Three green tiers, ranked by real greenery.** For each trip you get up to three options —
   **🍃 Scenic / 🌿 More scenic / 🌳 Most scenic** — ranked by *measured green cover* (the share
   of the route that actually passes through parks/forest), not by guesswork. The balanced
@@ -83,8 +87,11 @@ combines them.
 
 **1. Candidate routes.** For each trip it asks the [BRouter](https://brouter.de) engine for
 several candidates in parallel — a custom *scenic* profile (maximal greenery), a lighter
-*hybrid* profile, and BRouter's own alternatives. The two custom profiles ship as `.brf` files
-and are uploaded to BRouter on first use, then cached.
+*hybrid* profile, and BRouter's own alternatives. Both custom profiles also **prefer dedicated
+cycle paths** (two-way / segregated tracks and `cyclestreet` / `bicycle_road` fietsstraten) over
+ordinary roads and **add a cost to every traffic-signal crossing**, so routes lean onto the best
+lanes with fewer red lights. The two profiles ship as `.brf` files, uploaded to BRouter on first
+use, then cached.
 
 **2. Park dips.** BRouter doesn't know about urban parks, so FietsNav queries
 [Overpass](https://overpass-api.de) for nearby green areas (`leisure=park`, `landuse=forest`,
